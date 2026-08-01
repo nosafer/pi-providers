@@ -1,19 +1,19 @@
 /**
  * Context window inference.
- * Priority: /v1/models API fields → known official catalog heuristics → 128k.
+ * Priority:
+ * 1. /v1/models API fields (if gateway returns them)
+ * 2. pi-ai official catalog (generated from pi-ai providers/data JSON)
+ * 3. small fallback heuristics for unknown ids
+ * 4. 128k
  *
- * Sources (checked 2026-08-01):
- * - OpenAI models: GPT-5.6 Sol/Terra/Luna context 1.05M
- * - xAI docs: grok-4.5 = 500k; grok-4.3 / grok-4.20* = 1M
- * - 智谱 model overview: GLM-5.2 = 1M; GLM-5.1/5/4.7/4.6 ≈ 200k; GLM-4.5-Air = 128k; GLM-4-Long = 1M
- * - Gemini (common API): 2.x/3.x class often 1M (gateway-dependent)
- *
- * Bump CONTEXT_CATALOG_VERSION when context/thinking tables change so users can
- * run `/providers sync-catalog` to refresh existing configs.
+ * Bump CONTEXT_CATALOG_VERSION when regenerating catalog or changing fallbacks.
+ * Users run `/providers sync-catalog` to refresh stored configs.
  */
-export const CONTEXT_CATALOG_VERSION = 4;
-export const CONTEXT_CATALOG_LABEL =
-  "v4 (context+thinking: kimi-k3/claude/gemini/gpt/grok official maps)";
+import { getCatalogMeta, lookupPiAiCatalog } from "./catalog-lookup.ts";
+
+const cat = getCatalogMeta();
+export const CONTEXT_CATALOG_VERSION = 5;
+export const CONTEXT_CATALOG_LABEL = `v5 (pi-ai catalog ${cat.modelCount} models + API fields)`;
 
 /** More specific patterns first. */
 const KNOWN_CONTEXT: Array<{ pattern: RegExp; contextWindow: number; note?: string }> = [
@@ -116,6 +116,8 @@ export function resolveContextWindow(opts: {
   fallback?: number;
 }): number {
   if (opts.fromApi && opts.fromApi >= 1000) return opts.fromApi;
+  const fromPi = lookupPiAiCatalog(opts.id)?.contextWindow;
+  if (fromPi && fromPi >= 1000) return fromPi;
   const inferred = inferContextFromModelId(opts.id);
   if (inferred) return inferred;
   return opts.fallback ?? 128_000;

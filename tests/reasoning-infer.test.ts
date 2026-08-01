@@ -37,11 +37,12 @@ describe("inferReasoningProfile — official alignment", () => {
     expect(listSupportedThinkingLevels(p)).toContain("max");
   });
 
-  it("glm-5.2: high + max", () => {
+  it("glm-5.2 from zai catalog includes high and max", () => {
     const p = inferReasoningProfile("glm-5.2");
-    expect(listSupportedThinkingLevels(p).sort()).toEqual(
-      ["high", "max"].sort(),
-    );
+    const levels = listSupportedThinkingLevels(p);
+    expect(levels).toContain("high");
+    expect(levels).toContain("max");
+    expect(p.note).toMatch(/pi-ai/);
   });
 
   it("gemini-3.1-pro: LOW/HIGH only", () => {

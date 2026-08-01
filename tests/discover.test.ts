@@ -57,7 +57,8 @@ describe("toModelEntry", () => {
     expect(m.name).toBe("x-unknown-model");
   });
 
-  it("infers gpt-5.5 as 1M", () => {
-    expect(toModelEntry("gpt-5.5").contextWindow).toBe(1_000_000);
+  it("uses pi-ai catalog for gpt-5.5 context", () => {
+    expect(toModelEntry("gpt-5.5").contextWindow).toBe(272_000);
+    expect(toModelEntry("gpt-5.5").reasoning).toBe(true);
   });
 });

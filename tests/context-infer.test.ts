@@ -44,8 +44,9 @@ describe("resolveContextWindow", () => {
     ).toBe(500000);
   });
 
-  it("falls back to heuristics", () => {
-    expect(resolveContextWindow({ id: "gpt-5.5", fallback: 128000 })).toBe(1_000_000);
+  it("uses pi-ai catalog for gpt-5.5 (openai short-context default 272k)", () => {
+    // Official openai.json uses 272000; long 1.05M is via modelOverrides
+    expect(resolveContextWindow({ id: "gpt-5.5", fallback: 128000 })).toBe(272_000);
   });
 
   it("prefers grok-4.5 = 500k not 1M", () => {

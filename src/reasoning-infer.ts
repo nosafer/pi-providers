@@ -1,14 +1,9 @@
 /**
- * Infer reasoning + thinkingLevelMap aligned with pi-ai official provider catalogs
- * and vendor docs (Moonshot K3: reasoning_effort low/high/max, default max).
- *
- * Source of truth cross-check (pi-ai dist/providers/data/* + Moonshot docs 2026-08):
- * - kimi-k3: off=null, low/high/max (medium/minimal/xhigh null)
- * - grok-4.5: off=null, low/medium/high (no max/xhigh)
- * - gpt-5.5: off=null, low..xhigh (no max on 5.5; 5.6 sol/terra/luna include max)
- * - deepseek-v4 / glm-5.2: high + max
- * - gemini-3 flash: always-on thinking (off=null only)
+ * Infer reasoning + thinkingLevelMap.
+ * Priority: pi-ai official catalog (generated) → pattern fallbacks → non-reasoning.
  */
+
+import { lookupPiAiCatalog } from "./catalog-lookup.ts";
 
 export type ThinkingLevel =
   | "off"
@@ -361,6 +356,16 @@ const PROFILES: Array<{ pattern: RegExp; profile: ReasoningProfile }> = [
 ];
 
 export function inferReasoningProfile(modelId: string): ReasoningProfile {
+  const hit = lookupPiAiCatalog(modelId);
+  if (hit) {
+    return {
+      reasoning: hit.reasoning,
+      thinkingLevelMap: hit.thinkingLevelMap
+        ? { ...hit.thinkingLevelMap }
+        : undefined,
+      note: `pi-ai:${hit.source} (${hit.matchedKey})`,
+    };
+  }
   for (const { pattern, profile } of PROFILES) {
     if (pattern.test(modelId)) {
       return {
