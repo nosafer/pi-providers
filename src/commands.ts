@@ -99,8 +99,6 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     return;
   }
 
-  const displayName =
-    (await ctx.ui.input("显示名（回车=id）", id))?.trim() || id;
   const baseUrl = (await ctx.ui.input("baseUrl", "https://"))?.trim();
   if (!baseUrl) return;
 
@@ -186,7 +184,7 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
 
   upsertManagedProvider({
     id,
-    displayName,
+    displayName: id,
     baseUrl,
     api,
     keyMode,
@@ -281,7 +279,7 @@ async function actionEdit(ctx: Ctx): Promise<void> {
 
   upsertManagedProvider({
     id,
-    displayName: meta.displayName,
+    displayName: id,
     baseUrl,
     api,
     keyMode,
@@ -357,7 +355,7 @@ async function actionRefresh(ctx: Ctx, presetId?: string): Promise<void> {
   const keyMode: KeyMode = p.apiKey?.startsWith("$") ? "env" : "literal";
   upsertManagedProvider({
     id,
-    displayName: meta.displayName,
+    displayName: id,
     baseUrl: p.baseUrl ?? "",
     api: (p.api ?? meta.api) as ProviderApi,
     keyMode,
