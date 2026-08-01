@@ -15,11 +15,14 @@ describe("multi-select", () => {
     expect([...s]).toEqual([]);
   });
 
-  it("formats labels", () => {
-    const labels = formatMultiSelectLabels(["a", "b"], new Set(["a"]));
-    expect(labels[0]).toBe("[x] a");
-    expect(labels[1]).toBe("[ ] b");
-    expect(labels.at(-2)).toBe("Done");
+  it("formats labels with Done/Cancel on top and selected first", () => {
+    const labels = formatMultiSelectLabels(["a", "b", "c"], new Set(["b"]));
+    expect(labels[0]).toBe("Done");
+    expect(labels[1]).toBe("Cancel");
+    expect(labels[2]).toBe("---");
+    expect(labels[3]).toBe("[x] b");
+    expect(labels[4]).toBe("[ ] a");
+    expect(labels[5]).toBe("[ ] c");
   });
 
   it("parses choice", () => {

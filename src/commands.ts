@@ -16,6 +16,7 @@ import {
   setDefaultModel,
   upsertManagedProvider,
 } from "./store.ts";
+import { publishManagedProvider } from "./runtime-publish.ts";
 import { switchModel } from "./switch-model.ts";
 import { testConnection } from "./test-connection.ts";
 import type { KeyMode, ModelEntry, ProviderApi } from "./types.ts";
@@ -192,9 +193,33 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     envVar,
     models: selectedModels,
   });
-  await ctx.modelRegistry.refresh();
+  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  if (!published.ok) {
+    ctx.ui.notify(published.message, "warning");
+  }
   ctx.ui.notify(`已添加 ${id}（${selectedModels.length} 模型）`, "info");
-  void pi;
+
+  const goSwitch = await ctx.ui.confirm(
+    "切换模型",
+    `立即切换到 ${id}/${selectedModels[0].id}？`,
+  );
+  if (goSwitch) {
+    const scope = await ctx.ui.select("范围", ["仅本次", "设为默认"]);
+    if (scope) {
+      const result = await switchModel({
+        providerId: id,
+        modelId: selectedModels[0].id,
+        setAsDefault: scope === "设为默认",
+        pi: { setModel: (m) => pi.setModel(m as never) },
+        modelRegistry: {
+          refresh: () => ctx.modelRegistry.refresh(),
+          find: (p, mid) => ctx.modelRegistry.find(p, mid),
+        },
+        setDefault: (p, m) => setDefaultModel(p, m),
+      });
+      ctx.ui.notify(result.message, result.ok ? "info" : "error");
+    }
+  }
 }
 
 async function selectManaged(ctx: Ctx, title: string): Promise<string | null> {
@@ -207,7 +232,7 @@ async function selectManaged(ctx: Ctx, title: string): Promise<string | null> {
   return choice ?? null;
 }
 
-async function actionEdit(ctx: Ctx): Promise<void> {
+async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   const id = await selectManaged(ctx, "编辑哪个 provider？");
   if (!id) return;
   const models = loadModels();
@@ -229,7 +254,7 @@ async function actionEdit(ctx: Ctx): Promise<void> {
   if (!field) return;
 
   if (field === "refresh 模型列表") {
-    await actionRefresh(ctx, id);
+    await actionRefresh(ctx, pi, id);
     return;
   }
 
@@ -287,7 +312,8 @@ async function actionEdit(ctx: Ctx): Promise<void> {
     envVar,
     models: modelList,
   });
-  await ctx.modelRegistry.refresh();
+  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(`已更新 ${id}`, "info");
 }
 
@@ -301,7 +327,7 @@ async function actionDelete(ctx: Ctx): Promise<void> {
   ctx.ui.notify(`已删除 ${id}`, "info");
 }
 
-async function actionRefresh(ctx: Ctx, presetId?: string): Promise<void> {
+async function actionRefresh(ctx: Ctx, pi: ExtensionAPI, presetId?: string): Promise<void> {
   const id = presetId ?? (await selectManaged(ctx, "刷新哪个 provider 的模型？"));
   if (!id) return;
   const modelsFile = loadModels();
@@ -363,7 +389,8 @@ async function actionRefresh(ctx: Ctx, presetId?: string): Promise<void> {
     envVar: keyMode === "env" ? resolved.envVar : undefined,
     models: finalModels,
   });
-  await ctx.modelRegistry.refresh();
+  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(
     `刷新完成：保留 ${plan.keep.length}，新增 ${added.length}，stale ${plan.stale.length}`,
     "info",
@@ -385,6 +412,8 @@ async function actionSwitch(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   if (!modelId) return;
   const scope = await ctx.ui.select("范围", ["仅本次", "设为默认"]);
   if (!scope) return;
+  // Ensure live registry has this provider before setModel
+  await publishManagedProvider(pi, ctx.modelRegistry, id);
   const result = await switchModel({
     providerId: id,
     modelId,
@@ -459,11 +488,11 @@ async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<vo
     case "add":
       return actionAdd(ctx, pi);
     case "edit":
-      return actionEdit(ctx);
+      return actionEdit(ctx, pi);
     case "delete":
       return actionDelete(ctx);
     case "refresh":
-      return actionRefresh(ctx);
+      return actionRefresh(ctx, pi);
     case "switch":
       return actionSwitch(ctx, pi);
     case "test":
