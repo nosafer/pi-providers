@@ -1,0 +1,476 @@
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { discoverModels, toModelEntry } from "./discover.ts";
+import {
+  formatMultiSelectLabels,
+  parseMultiSelectChoice,
+  toggleMultiSelectState,
+} from "./multi-select.ts";
+import { planRefresh, applyRefreshSelection } from "./refresh-models.ts";
+import {
+  deleteManagedProvider,
+  isManaged,
+  listManaged,
+  loadAuth,
+  loadModels,
+  loadSidecar,
+  setDefaultModel,
+  upsertManagedProvider,
+} from "./store.ts";
+import { switchModel } from "./switch-model.ts";
+import { testConnection } from "./test-connection.ts";
+import type { KeyMode, ModelEntry, ProviderApi } from "./types.ts";
+import { PROVIDER_ID_RE } from "./types.ts";
+
+type Ctx = ExtensionCommandContext;
+
+async function pickModels(
+  ctx: Ctx,
+  ids: string[],
+  initial: string[],
+  title = "选择模型",
+): Promise<string[] | null> {
+  let selected = new Set(initial);
+  while (true) {
+    const labels = formatMultiSelectLabels(ids, selected);
+    const choice = await ctx.ui.select(`${title}（已选 ${selected.size}）`, labels);
+    if (!choice) return null;
+    const parsed = parseMultiSelectChoice(choice);
+    if (parsed === "cancel") return null;
+    if (parsed === "done") return [...selected];
+    if (parsed === "sep") continue;
+    selected = toggleMultiSelectState(selected, parsed.id);
+  }
+}
+
+function resolveApiKey(
+  providerId: string,
+  modelsApiKey: string | undefined,
+): { key?: string; mode: KeyMode; envVar?: string } {
+  if (modelsApiKey?.startsWith("$")) {
+    const envVar = modelsApiKey.slice(1).replace(/^\{|\}$/g, "");
+    return { key: process.env[envVar], mode: "env", envVar };
+  }
+  const auth = loadAuth();
+  const entry = auth[providerId];
+  if (entry && entry.type === "api_key" && typeof entry.key === "string") {
+    if (entry.key.startsWith("$")) {
+      const envVar = entry.key.slice(1).replace(/^\{|\}$/g, "");
+      return { key: process.env[envVar], mode: "env", envVar };
+    }
+    return { key: entry.key, mode: "literal" };
+  }
+  return { mode: "literal" };
+}
+
+async function actionList(ctx: Ctx): Promise<void> {
+  const ids = listManaged();
+  if (ids.length === 0) {
+    ctx.ui.notify("尚无 pi-providers 管理的 provider。用 add 添加。", "info");
+    return;
+  }
+  const models = loadModels();
+  const side = loadSidecar();
+  const current = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "(none)";
+  const lines = ids.map((id) => {
+    const p = models.providers?.[id];
+    const meta = side.providers[id];
+    const n = p?.models?.length ?? 0;
+    const cur = ctx.model?.provider === id ? " [当前]" : "";
+    return `${id}  ${meta?.api ?? p?.api ?? "?"}  models:${n}  ${p?.baseUrl ?? ""}${cur}`;
+  });
+  lines.push(`--- 当前会话: ${current}`);
+  await ctx.ui.select("Managed providers", lines);
+}
+
+async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
+  const id = (await ctx.ui.input("Provider id (a-z0-9_-)"))?.trim();
+  if (!id) return;
+  if (!PROVIDER_ID_RE.test(id)) {
+    ctx.ui.notify(`非法 id: ${id}`, "error");
+    return;
+  }
+  if (isManaged(id)) {
+    ctx.ui.notify(`已存在 managed provider: ${id}，请用 edit`, "error");
+    return;
+  }
+  const models = loadModels();
+  if (models.providers?.[id]) {
+    ctx.ui.notify(`id 已被非本插件 provider 占用: ${id}`, "error");
+    return;
+  }
+
+  const displayName =
+    (await ctx.ui.input("显示名（回车=id）", id))?.trim() || id;
+  const baseUrl = (await ctx.ui.input("baseUrl", "https://"))?.trim();
+  if (!baseUrl) return;
+
+  const apiLabel = await ctx.ui.select("API 类型", [
+    "openai-completions",
+    "anthropic-messages",
+  ]);
+  if (!apiLabel) return;
+  const api = apiLabel as ProviderApi;
+
+  const keyModeLabel = await ctx.ui.select("密钥方式", [
+    "literal — 写入 auth.json",
+    "env — models.json 引用 $ENV",
+  ]);
+  if (!keyModeLabel) return;
+  const keyMode: KeyMode = keyModeLabel.startsWith("env") ? "env" : "literal";
+
+  let apiKey: string | undefined;
+  let envVar: string | undefined;
+  if (keyMode === "literal") {
+    apiKey = (await ctx.ui.input("API Key（不会显示完整日志）"))?.trim();
+    if (!apiKey) {
+      ctx.ui.notify("需要 API Key", "error");
+      return;
+    }
+  } else {
+    envVar = (await ctx.ui.input("环境变量名（不含 $）", "MY_API_KEY"))?.trim();
+    if (!envVar) return;
+    envVar = envVar.replace(/^\$/, "");
+    apiKey = process.env[envVar];
+  }
+
+  let selectedModels: ModelEntry[] = [];
+  const discovered = await discoverModels({ baseUrl, api, apiKey });
+  if (discovered.ok) {
+    const picked = await pickModels(
+      ctx,
+      discovered.models.map((m) => m.id),
+      [],
+      "多选要保留的模型",
+    );
+    if (picked === null) return;
+    if (picked.length === 0) {
+      const manual = (await ctx.ui.input("手填模型 id（逗号分隔）"))?.trim();
+      if (manual) {
+        selectedModels = manual
+          .split(/[,\s]+/)
+          .filter(Boolean)
+          .map((x) => toModelEntry(x));
+      }
+    } else {
+      const map = new Map(discovered.models.map((m) => [m.id, m]));
+      selectedModels = picked.map((id) => map.get(id) ?? toModelEntry(id));
+    }
+  } else {
+    ctx.ui.notify(`自动发现失败: ${discovered.error}，请手填模型`, "warning");
+    const manual = (await ctx.ui.input("手填模型 id（逗号分隔）"))?.trim();
+    if (!manual) {
+      ctx.ui.notify("未选择模型，已取消", "error");
+      return;
+    }
+    selectedModels = manual
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .map((x) => toModelEntry(x));
+  }
+
+  if (selectedModels.length === 0) {
+    ctx.ui.notify("至少需要一个模型", "error");
+    return;
+  }
+
+  const doTest = await ctx.ui.confirm("连通测试", "现在测试连通性？");
+  if (doTest) {
+    const t = await testConnection({
+      baseUrl,
+      api,
+      apiKey,
+      modelId: selectedModels[0]?.id,
+    });
+    ctx.ui.notify(t.message, t.ok ? "info" : "warning");
+  }
+
+  upsertManagedProvider({
+    id,
+    displayName,
+    baseUrl,
+    api,
+    keyMode,
+    apiKey,
+    envVar,
+    models: selectedModels,
+  });
+  await ctx.modelRegistry.refresh();
+  ctx.ui.notify(`已添加 ${id}（${selectedModels.length} 模型）`, "info");
+  void pi;
+}
+
+async function selectManaged(ctx: Ctx, title: string): Promise<string | null> {
+  const ids = listManaged();
+  if (ids.length === 0) {
+    ctx.ui.notify("没有 managed provider", "info");
+    return null;
+  }
+  const choice = await ctx.ui.select(title, ids);
+  return choice ?? null;
+}
+
+async function actionEdit(ctx: Ctx): Promise<void> {
+  const id = await selectManaged(ctx, "编辑哪个 provider？");
+  if (!id) return;
+  const models = loadModels();
+  const p = models.providers?.[id];
+  const side = loadSidecar();
+  const meta = side.providers[id];
+  if (!p || !meta) {
+    ctx.ui.notify("数据不一致", "error");
+    return;
+  }
+
+  const field = await ctx.ui.select("改什么？", [
+    "baseUrl",
+    "api",
+    "key",
+    "models (手填覆盖)",
+    "refresh 模型列表",
+  ]);
+  if (!field) return;
+
+  if (field === "refresh 模型列表") {
+    await actionRefresh(ctx, id);
+    return;
+  }
+
+  let baseUrl = p.baseUrl ?? "";
+  let api = (p.api ?? meta.api) as ProviderApi;
+  let keyMode: KeyMode = p.apiKey?.startsWith("$") ? "env" : "literal";
+  let apiKey: string | undefined;
+  let envVar: string | undefined;
+  let modelList = [...(p.models ?? [])];
+
+  if (field === "baseUrl") {
+    baseUrl = (await ctx.ui.input("baseUrl", baseUrl))?.trim() || baseUrl;
+  } else if (field === "api") {
+    const a = await ctx.ui.select("API", ["openai-completions", "anthropic-messages"]);
+    if (!a) return;
+    api = a as ProviderApi;
+  } else if (field === "key") {
+    const mode = await ctx.ui.select("密钥方式", [
+      "literal — auth.json",
+      "env — $ENV",
+    ]);
+    if (!mode) return;
+    keyMode = mode.startsWith("env") ? "env" : "literal";
+    if (keyMode === "literal") {
+      apiKey = (await ctx.ui.input("API Key"))?.trim();
+      if (!apiKey) return;
+    } else {
+      envVar = (await ctx.ui.input("环境变量名", "MY_API_KEY"))?.trim()?.replace(/^\$/, "");
+      if (!envVar) return;
+    }
+  } else if (field === "models (手填覆盖)") {
+    const cur = modelList.map((m) => m.id).join(", ");
+    const manual = (await ctx.ui.input("模型 id（逗号分隔）", cur))?.trim();
+    if (!manual) return;
+    modelList = manual
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .map((x) => toModelEntry(x));
+  }
+
+  if (field !== "key") {
+    const resolved = resolveApiKey(id, p.apiKey);
+    keyMode = resolved.mode;
+    if (keyMode === "env") envVar = resolved.envVar;
+    else apiKey = resolved.key;
+  }
+
+  upsertManagedProvider({
+    id,
+    displayName: meta.displayName,
+    baseUrl,
+    api,
+    keyMode,
+    apiKey,
+    envVar,
+    models: modelList,
+  });
+  await ctx.modelRegistry.refresh();
+  ctx.ui.notify(`已更新 ${id}`, "info");
+}
+
+async function actionDelete(ctx: Ctx): Promise<void> {
+  const id = await selectManaged(ctx, "删除哪个 provider？");
+  if (!id) return;
+  const ok = await ctx.ui.confirm("确认删除", `删除 managed provider「${id}」？`);
+  if (!ok) return;
+  deleteManagedProvider(id);
+  await ctx.modelRegistry.refresh();
+  ctx.ui.notify(`已删除 ${id}`, "info");
+}
+
+async function actionRefresh(ctx: Ctx, presetId?: string): Promise<void> {
+  const id = presetId ?? (await selectManaged(ctx, "刷新哪个 provider 的模型？"));
+  if (!id) return;
+  const modelsFile = loadModels();
+  const p = modelsFile.providers?.[id];
+  const side = loadSidecar();
+  const meta = side.providers[id];
+  if (!p || !meta) {
+    ctx.ui.notify("数据不一致", "error");
+    return;
+  }
+  const resolved = resolveApiKey(id, p.apiKey);
+  const discovered = await discoverModels({
+    baseUrl: p.baseUrl ?? "",
+    api: (p.api ?? meta.api) as ProviderApi,
+    apiKey: resolved.key,
+  });
+  if (!discovered.ok) {
+    ctx.ui.notify(`刷新失败: ${discovered.error}`, "error");
+    return;
+  }
+  const selected = meta.selectedModelIds;
+  const plan = planRefresh(
+    selected,
+    discovered.models.map((m) => m.id),
+  );
+  if (plan.stale.length) {
+    ctx.ui.notify(`远端已无: ${plan.stale.join(", ")}（本地仍保留）`, "warning");
+  }
+  let added: string[] = [];
+  if (plan.newCandidates.length) {
+    const picked = await pickModels(
+      ctx,
+      plan.newCandidates,
+      [],
+      "远端新增模型 — 选择加入",
+    );
+    if (picked === null) return;
+    added = picked;
+  } else {
+    ctx.ui.notify("无新增模型", "info");
+  }
+
+  const finalModels = applyRefreshSelection({
+    keep: plan.keep,
+    added,
+    stale: plan.stale,
+    remoteModels: discovered.models,
+    localModels: p.models ?? [],
+  });
+
+  const keyMode: KeyMode = p.apiKey?.startsWith("$") ? "env" : "literal";
+  upsertManagedProvider({
+    id,
+    displayName: meta.displayName,
+    baseUrl: p.baseUrl ?? "",
+    api: (p.api ?? meta.api) as ProviderApi,
+    keyMode,
+    apiKey: keyMode === "literal" ? resolved.key : undefined,
+    envVar: keyMode === "env" ? resolved.envVar : undefined,
+    models: finalModels,
+  });
+  await ctx.modelRegistry.refresh();
+  ctx.ui.notify(
+    `刷新完成：保留 ${plan.keep.length}，新增 ${added.length}，stale ${plan.stale.length}`,
+    "info",
+  );
+}
+
+async function actionSwitch(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
+  const id = await selectManaged(ctx, "切换到哪个 provider？");
+  if (!id) return;
+  const models = loadModels().providers?.[id]?.models ?? [];
+  if (models.length === 0) {
+    ctx.ui.notify("该 provider 无模型", "error");
+    return;
+  }
+  const modelId = await ctx.ui.select(
+    "选择模型",
+    models.map((m) => m.id),
+  );
+  if (!modelId) return;
+  const scope = await ctx.ui.select("范围", ["仅本次", "设为默认"]);
+  if (!scope) return;
+  const result = await switchModel({
+    providerId: id,
+    modelId,
+    setAsDefault: scope === "设为默认",
+    pi: { setModel: (m) => pi.setModel(m as never) },
+    modelRegistry: {
+      refresh: () => ctx.modelRegistry.refresh(),
+      find: (p, mid) => ctx.modelRegistry.find(p, mid),
+    },
+    setDefault: (p, m) => setDefaultModel(p, m),
+  });
+  ctx.ui.notify(result.message, result.ok ? "info" : "error");
+}
+
+async function actionTest(ctx: Ctx): Promise<void> {
+  const id = await selectManaged(ctx, "测试哪个 provider？");
+  if (!id) return;
+  const p = loadModels().providers?.[id];
+  const meta = loadSidecar().providers[id];
+  if (!p) return;
+  const resolved = resolveApiKey(id, p.apiKey);
+  const t = await testConnection({
+    baseUrl: p.baseUrl ?? "",
+    api: (p.api ?? meta?.api ?? "openai-completions") as ProviderApi,
+    apiKey: resolved.key,
+    modelId: p.models?.[0]?.id,
+  });
+  ctx.ui.notify(t.message, t.ok ? "info" : "error");
+}
+
+export function registerProvidersCommand(pi: ExtensionAPI): void {
+  pi.registerCommand("providers", {
+    description: "管理自建/第三方模型中转 (pi-providers)",
+    getArgumentCompletions: (prefix) => {
+      const subs = ["list", "add", "edit", "delete", "refresh", "switch", "test"];
+      return subs
+        .filter((s) => s.startsWith(prefix))
+        .map((s) => ({ value: s, label: s }));
+    },
+    handler: async (args, ctx) => {
+      const sub = args.trim().split(/\s+/).filter(Boolean)[0] ?? "";
+      try {
+        if (!sub || sub === "list") {
+          if (!sub) {
+            const action = await ctx.ui.select("/providers", [
+              "list",
+              "add",
+              "edit",
+              "delete",
+              "refresh",
+              "switch",
+              "test",
+            ]);
+            if (!action) return;
+            return handlerRoute(action, ctx, pi);
+          }
+          return actionList(ctx);
+        }
+        return handlerRoute(sub, ctx, pi);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.ui.notify(msg, "error");
+      }
+    },
+  });
+}
+
+async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<void> {
+  switch (sub) {
+    case "list":
+      return actionList(ctx);
+    case "add":
+      return actionAdd(ctx, pi);
+    case "edit":
+      return actionEdit(ctx);
+    case "delete":
+      return actionDelete(ctx);
+    case "refresh":
+      return actionRefresh(ctx);
+    case "switch":
+      return actionSwitch(ctx, pi);
+    case "test":
+      return actionTest(ctx);
+    default:
+      ctx.ui.notify(`未知子命令: ${sub}`, "error");
+  }
+}
