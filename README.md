@@ -3,7 +3,8 @@
 pi coding agent（`@earendil-works/pi-coding-agent`）交互式模型 / 中转管理 extension。  
 统一入口 **`/providers`**，避免手写 `models.json`。
 
-当前版本：**0.1.0** · 能力 catalog：**v5**（pi-ai 官方模型表）
+当前版本：**0.1.0** · 能力 catalog：**v5**（pi-ai 官方模型表）  
+仓库：https://github.com/nosafer/pi-providers
 
 ## 功能
 
