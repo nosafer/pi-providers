@@ -2,6 +2,7 @@ import {
   extractContextFromRow,
   resolveContextWindow,
 } from "./context-infer.ts";
+import { inferReasoningProfile } from "./reasoning-infer.ts";
 import { DEFAULT_MODEL_META, type ModelEntry, type ProviderApi } from "./types.ts";
 
 export function toModelEntry(
@@ -14,10 +15,12 @@ export function toModelEntry(
     fromApi: contextWindow,
     fallback: DEFAULT_MODEL_META.contextWindow,
   });
+  const reasoning = inferReasoningProfile(id);
   return {
     id,
     name: name ?? id,
-    reasoning: DEFAULT_MODEL_META.reasoning,
+    reasoning: reasoning.reasoning,
+    thinkingLevelMap: reasoning.thinkingLevelMap,
     input: [...DEFAULT_MODEL_META.input],
     contextWindow: cw,
     maxTokens: DEFAULT_MODEL_META.maxTokens,

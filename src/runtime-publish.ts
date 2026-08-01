@@ -48,6 +48,7 @@ export async function publishManagedProvider(
         id: m.id,
         name: m.name,
         reasoning: m.reasoning,
+        thinkingLevelMap: m.thinkingLevelMap,
         input: m.input,
         contextWindow: m.contextWindow,
         maxTokens: m.maxTokens,

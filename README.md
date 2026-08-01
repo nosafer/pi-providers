@@ -43,9 +43,21 @@ pi -e ./index.ts
 | `/providers delete-models` | 删除部分模型（`/model` 中消失） |
 | `/providers delete` | 删除整个 provider |
 | `/providers refresh` | 刷新远端模型列表 |
-| `/providers apply-context` | **应用最新上下文表**（插件更新后点这个） |
+| `/providers apply-context` | **应用最新上下文表**（含思考能力启发式；插件更新后点这个） |
+| `/providers thinking` | **查看/设置当前模型思考强度**（按模型显示可用级别） |
 | `/providers switch` | 切换当前 / 默认模型 |
 | `/providers test` | 连通测试 |
+
+### 思考强度
+
+pi 级别：`off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`。  
+是否可用取决于模型的 `reasoning` + `thinkingLevelMap`（添加/`apply-context` 时按名称推断）。
+
+```text
+/providers thinking          # 看当前模型支持哪些级别并切换
+pi --thinking high           # 启动时
+pi --model mkopen/gpt-5.5:high
+```
 
 配置文件：
 

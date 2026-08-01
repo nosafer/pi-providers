@@ -22,6 +22,12 @@ import {
   CONTEXT_CATALOG_VERSION,
   resolveContextWindow,
 } from "./context-infer.ts";
+import {
+  formatThinkingSummary,
+  inferReasoningProfile,
+  listSupportedThinkingLevels,
+  type ThinkingLevel,
+} from "./reasoning-infer.ts";
 import { publishManagedProvider } from "./runtime-publish.ts";
 import { selectScrollable } from "./select-ui.ts";
 import { switchModel } from "./switch-model.ts";
@@ -483,12 +489,28 @@ function previewReinfer(providerId: string): {
   if (!p?.models?.length) return null;
   let changed = 0;
   const updated = p.models.map((m) => {
-    const next = resolveContextWindow({ id: m.id });
-    if (next !== m.contextWindow) changed += 1;
-    return { ...m, contextWindow: next };
+    const nextCw = resolveContextWindow({ id: m.id });
+    const reason = inferReasoningProfile(m.id);
+    if (
+      nextCw !== m.contextWindow ||
+      reason.reasoning !== m.reasoning ||
+      JSON.stringify(reason.thinkingLevelMap ?? null) !==
+        JSON.stringify(m.thinkingLevelMap ?? null)
+    ) {
+      changed += 1;
+    }
+    return {
+      ...m,
+      contextWindow: nextCw,
+      reasoning: reason.reasoning,
+      thinkingLevelMap: reason.thinkingLevelMap,
+    };
   });
   const summary = updated
-    .map((m) => `${m.id}:${Math.round(m.contextWindow / 1000)}k`)
+    .map(
+      (m) =>
+        `${m.id}:${Math.round(m.contextWindow / 1000)}k${m.reasoning ? "+think" : ""}`,
+    )
     .join(", ");
   return { changed, summary, updated };
 }
@@ -565,23 +587,32 @@ async function actionApplyLatestContextCatalog(
     if (parts.length) previewLines.push(`${id}: ${parts.join(", ")}`);
   }
 
+  // Also count reasoning/thinking map drift in preview
+  for (const id of ids) {
+    const p = previewReinfer(id);
+    if (p && p.changed > totalChanged) {
+      // keep max of context-only count vs full reinfer count for message
+      totalChanged = Math.max(totalChanged, p.changed);
+    }
+  }
+
   const header =
     current === CONTEXT_CATALOG_VERSION
-      ? `当前已是 ${CONTEXT_CATALOG_LABEL}。仍可强制重算。`
-      : `当前 catalog: v${current || "未记录"} → 将应用 ${CONTEXT_CATALOG_LABEL}`;
+      ? `当前已是 ${CONTEXT_CATALOG_LABEL}。仍可强制重算 context+思考能力。`
+      : `当前 catalog: v${current || "未记录"} → 将应用 ${CONTEXT_CATALOG_LABEL}（含思考能力启发式）`;
 
   if (totalChanged === 0) {
     const ok = await ctx.ui.confirm(
       "应用最新上下文表",
-      `${header}\n预览：无数值变化（${ids.length} 个 provider）。\n仍写入 catalog 版本标记？`,
+      `${header}\n预览：无变化（${ids.length} 个 provider）。\n仍写入 catalog 版本标记？`,
     );
     if (!ok) return;
   } else {
     const body = previewLines.slice(0, 12).join("\n");
-    const more = previewLines.length > 12 ? `\n…共 ${totalChanged} 处变更` : "";
+    const more = previewLines.length > 12 ? `\n…共约 ${totalChanged} 处变更` : "";
     const ok = await ctx.ui.confirm(
       "应用最新上下文表",
-      `${header}\n\n${body}${more}\n\n确认写入 models.json 并热加载？`,
+      `${header}\n\n${body || "(含 reasoning/thinkingLevelMap 更新)"}${more}\n\n确认写入并热加载？`,
     );
     if (!ok) return;
   }
@@ -611,6 +642,115 @@ async function actionDelete(ctx: Ctx): Promise<void> {
   deleteManagedProvider(id);
   await ctx.modelRegistry.refresh();
   ctx.ui.notify(`已删除 ${id}`, "info");
+}
+
+/**
+ * Show thinking levels for current (or selected) model and set one via pi.setThinkingLevel.
+ */
+async function actionThinking(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
+  const current = ctx.model;
+  let providerId = current?.provider;
+  let modelId = current?.id;
+
+  const source = await selectScrollable(ctx, "查看/设置思考强度", [
+    current
+      ? `当前模型  ${providerId}/${modelId}`
+      : "当前模型  （无）",
+    "从 managed provider 选择…",
+  ]);
+  if (!source) return;
+
+  if (source.startsWith("从 managed")) {
+    const pid = await selectManaged(ctx, "选择 provider");
+    if (!pid) return;
+    const models = loadModels().providers?.[pid]?.models ?? [];
+    if (!models.length) {
+      ctx.ui.notify("该 provider 无模型", "info");
+      return;
+    }
+    const mid = await selectScrollable(
+      ctx,
+      "选择模型",
+      models.map((m) => m.id),
+    );
+    if (!mid) return;
+    providerId = pid;
+    modelId = mid;
+    // switch session model first so setThinkingLevel applies to active model
+    await publishManagedProvider(pi, ctx.modelRegistry, pid);
+    const sw = await switchModel({
+      providerId: pid,
+      modelId: mid,
+      setAsDefault: false,
+      pi: { setModel: (m) => pi.setModel(m as never) },
+      modelRegistry: {
+        refresh: () => ctx.modelRegistry.refresh(),
+        find: (p, id) => ctx.modelRegistry.find(p, id),
+      },
+      setDefault: () => {},
+    });
+    if (!sw.ok) {
+      ctx.ui.notify(sw.message, "error");
+      return;
+    }
+  } else if (!current) {
+    ctx.ui.notify("当前无模型，请先 switch 或选择 managed 模型", "error");
+    return;
+  }
+
+  const live = ctx.modelRegistry.find(providerId!, modelId!);
+  const stored = loadModels().providers?.[providerId!]?.models?.find(
+    (m) => m.id === modelId,
+  );
+  const profile = {
+    reasoning:
+      (live as { reasoning?: boolean } | undefined)?.reasoning ??
+      stored?.reasoning ??
+      inferReasoningProfile(modelId!).reasoning,
+    thinkingLevelMap:
+      (live as { thinkingLevelMap?: ModelEntry["thinkingLevelMap"] } | undefined)
+        ?.thinkingLevelMap ??
+      stored?.thinkingLevelMap ??
+      inferReasoningProfile(modelId!).thinkingLevelMap,
+  };
+
+  const levels = listSupportedThinkingLevels(profile);
+  const currentLevel =
+    typeof pi.getThinkingLevel === "function"
+      ? pi.getThinkingLevel()
+      : ctx.thinkingLevel;
+
+  const summary = formatThinkingSummary({
+    modelId: modelId!,
+    ...profile,
+    current: String(currentLevel ?? ""),
+  });
+
+  if (!profile.reasoning) {
+    ctx.ui.notify(
+      `${summary}\n（可 /providers apply-context 刷新 reasoning 标记）`,
+      "warning",
+    );
+    return;
+  }
+
+  const labels = levels.map((l) =>
+    l === currentLevel ? `${l}  ← 当前` : l,
+  );
+  const choice = await selectScrollable(
+    ctx,
+    `思考强度 · ${providerId}/${modelId}\n${summary}`,
+    labels,
+  );
+  if (!choice) return;
+  const level = choice.replace(/\s*←.*$/, "").trim() as ThinkingLevel;
+  try {
+    pi.setThinkingLevel(level);
+    ctx.ui.notify(`思考强度 → ${level}（${providerId}/${modelId}）`, "info");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.ui.notify(`设置失败: ${msg}`, "error");
+  }
 }
 
 async function actionRefresh(ctx: Ctx, pi: ExtensionAPI, presetId?: string): Promise<void> {
@@ -743,6 +883,7 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
         "delete",
         "refresh",
         "apply-context",
+        "thinking",
         "switch",
         "test",
       ];
@@ -768,13 +909,16 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
               "delete",
               "refresh",
               cat,
+              "thinking  查看/设置思考强度",
               "switch",
               "test",
             ]);
             if (!action) return;
             const route = action.startsWith("apply-context")
               ? "apply-context"
-              : action;
+              : action.startsWith("thinking")
+                ? "thinking"
+                : action;
             return handlerRoute(route, ctx, pi);
           }
           return actionList(ctx);
@@ -804,6 +948,8 @@ async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<vo
       return actionRefresh(ctx, pi);
     case "apply-context":
       return actionApplyLatestContextCatalog(ctx, pi);
+    case "thinking":
+      return actionThinking(ctx, pi);
     case "switch":
       return actionSwitch(ctx, pi);
     case "test":

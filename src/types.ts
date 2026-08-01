@@ -9,10 +9,24 @@ export interface CostConfig {
   cacheWrite: number;
 }
 
+/** Pi thinking levels; null in map = unsupported for this model. */
+export type ThinkingLevel =
+  | "off"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
+
+export type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
+
 export interface ModelEntry {
   id: string;
   name: string;
   reasoning: boolean;
+  /** Maps pi levels → provider values; omit for pi defaults when reasoning=true */
+  thinkingLevelMap?: ThinkingLevelMap;
   input: Array<"text" | "image">;
   contextWindow: number;
   maxTokens: number;
