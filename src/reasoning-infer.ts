@@ -361,15 +361,12 @@ export function listSupportedThinkingLevels(opts: {
     return ["off", "minimal", "low", "medium", "high"];
   }
   return ALL_THINKING_LEVELS.filter((level) => {
-    if (!(level in map)) {
-      if (level === "xhigh" || level === "max") return false;
-      // When map only sets max (Claude), off..high still available unless null
-      if (Object.keys(map).length <= 2 && (map.max !== undefined || map.xhigh !== undefined)) {
-        return level !== "xhigh" && level !== "max" ? true : map[level] != null;
-      }
-      return true;
+    if (Object.prototype.hasOwnProperty.call(map, level)) {
+      return map[level] !== null;
     }
-    return map[level] !== null;
+    // omitted keys: xhigh/max unsupported by default; off..high use provider default
+    if (level === "xhigh" || level === "max") return false;
+    return true;
   });
 }
 
