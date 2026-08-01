@@ -702,19 +702,32 @@ async function actionThinking(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   const stored = loadModels().providers?.[providerId!]?.models?.find(
     (m) => m.id === modelId,
   );
+  // Prefer live registry, then stored config, then official heuristics (so max etc. stay correct)
+  const inferred = inferReasoningProfile(modelId!);
   const profile = {
     reasoning:
       (live as { reasoning?: boolean } | undefined)?.reasoning ??
       stored?.reasoning ??
-      inferReasoningProfile(modelId!).reasoning,
+      inferred.reasoning,
     thinkingLevelMap:
       (live as { thinkingLevelMap?: ModelEntry["thinkingLevelMap"] } | undefined)
         ?.thinkingLevelMap ??
       stored?.thinkingLevelMap ??
-      inferReasoningProfile(modelId!).thinkingLevelMap,
+      inferred.thinkingLevelMap,
+    note: inferred.note,
   };
 
-  const levels = listSupportedThinkingLevels(profile);
+  // If stored map is stale (e.g. missing max for kimi-k3), prefer inferred official map
+  const inferredLevels = listSupportedThinkingLevels(inferred);
+  const storedLevels = listSupportedThinkingLevels(profile);
+  const useProfile =
+    inferred.reasoning &&
+    inferredLevels.includes("max" as ThinkingLevel) &&
+    !storedLevels.includes("max" as ThinkingLevel)
+      ? inferred
+      : profile;
+
+  const levels = listSupportedThinkingLevels(useProfile);
   const currentLevel =
     typeof pi.getThinkingLevel === "function"
       ? pi.getThinkingLevel()
@@ -722,11 +735,11 @@ async function actionThinking(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
 
   const summary = formatThinkingSummary({
     modelId: modelId!,
-    ...profile,
+    ...useProfile,
     current: String(currentLevel ?? ""),
   });
 
-  if (!profile.reasoning) {
+  if (!useProfile.reasoning) {
     ctx.ui.notify(
       `${summary}\n（可 /providers apply-context 刷新 reasoning 标记）`,
       "warning",

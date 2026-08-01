@@ -11,8 +11,9 @@
  * Bump CONTEXT_CATALOG_VERSION when the table below changes so users can
  * run `/providers` →「应用最新上下文表」to refresh existing configs.
  */
-export const CONTEXT_CATALOG_VERSION = 2;
-export const CONTEXT_CATALOG_LABEL = "v2 (2026-08-01: grok-4.5=500k, glm-5.1=200k, gpt-5.6=1.05M)";
+export const CONTEXT_CATALOG_VERSION = 3;
+export const CONTEXT_CATALOG_LABEL =
+  "v3 (2026-08-01: context+thinking official; kimi-k3 low/high/max)";
 
 /** More specific patterns first. */
 const KNOWN_CONTEXT: Array<{ pattern: RegExp; contextWindow: number; note?: string }> = [

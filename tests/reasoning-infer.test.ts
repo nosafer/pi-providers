@@ -5,27 +5,43 @@ import {
   listSupportedThinkingLevels,
 } from "../src/reasoning-infer.ts";
 
-describe("inferReasoningProfile", () => {
-  it("marks gpt-5.5 as reasoning with effort map", () => {
-    const p = inferReasoningProfile("gpt-5.5");
+describe("inferReasoningProfile — official alignment", () => {
+  it("kimi-k3: low / high / max only (Moonshot + pi-ai)", () => {
+    const p = inferReasoningProfile("kimi-k3");
     expect(p.reasoning).toBe(true);
-    expect(listSupportedThinkingLevels(p)).toContain("high");
-    expect(listSupportedThinkingLevels(p)).toContain("max");
+    expect(listSupportedThinkingLevels(p).sort()).toEqual(
+      ["high", "low", "max"].sort(),
+    );
+    expect(p.thinkingLevelMap?.max).toBe("max");
+    expect(p.thinkingLevelMap?.medium).toBeNull();
   });
 
-  it("marks grok-4.5 as reasoning", () => {
+  it("grok-4.5: low/medium/high, no max", () => {
     const p = inferReasoningProfile("grok-4.5");
     expect(p.reasoning).toBe(true);
     const levels = listSupportedThinkingLevels(p);
     expect(levels).toContain("high");
+    expect(levels).not.toContain("max");
     expect(levels).not.toContain("xhigh");
   });
 
-  it("marks kimi/k3-class as reasoning with limited levels", () => {
-    const p = inferReasoningProfile("kimi-k3");
-    expect(p.reasoning).toBe(true);
+  it("gpt-5.5: low..xhigh, no max", () => {
+    const p = inferReasoningProfile("gpt-5.5");
     const levels = listSupportedThinkingLevels(p);
-    expect(levels).toEqual(["off", "low", "medium", "high"]);
+    expect(levels).toContain("xhigh");
+    expect(levels).not.toContain("max");
+  });
+
+  it("gpt-5.6-luna: includes max", () => {
+    const p = inferReasoningProfile("gpt-5.6-luna");
+    expect(listSupportedThinkingLevels(p)).toContain("max");
+  });
+
+  it("glm-5.2: high + max", () => {
+    const p = inferReasoningProfile("glm-5.2");
+    expect(listSupportedThinkingLevels(p).sort()).toEqual(
+      ["high", "max"].sort(),
+    );
   });
 
   it("unknown model is non-reasoning", () => {
@@ -36,14 +52,14 @@ describe("inferReasoningProfile", () => {
 });
 
 describe("formatThinkingSummary", () => {
-  it("shows available levels", () => {
-    const p = inferReasoningProfile("gpt-5.5");
+  it("shows max for kimi-k3", () => {
+    const p = inferReasoningProfile("kimi-k3");
     const s = formatThinkingSummary({
-      modelId: "gpt-5.5",
+      modelId: "kimi-k3",
       ...p,
-      current: "medium",
+      current: "max",
     });
-    expect(s).toContain("gpt-5.5");
-    expect(s).toContain("medium");
+    expect(s).toContain("max");
+    expect(s).toContain("kimi-k3");
   });
 });
