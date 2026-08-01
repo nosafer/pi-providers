@@ -208,9 +208,25 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     return;
   }
 
-  const contextWindow = await pickContextWindow(ctx, 128000);
-  if (contextWindow === null) return;
-  selectedModels = applyContextWindow(selectedModels, contextWindow);
+  // 优先使用接口字段 / 模型名启发式的各自 contextWindow（可能模型间不同）
+  const sample = selectedModels
+    .slice(0, 5)
+    .map((m) => `${m.id}:${Math.round(m.contextWindow / 1000)}k`)
+    .join(", ");
+  ctx.ui.notify(`已推断上下文: ${sample}${selectedModels.length > 5 ? "…" : ""}`, "info");
+
+  const override = await ctx.ui.confirm(
+    "上下文窗口",
+    "是否统一覆盖为同一 contextWindow？\n（选「否」则各模型保留自动推断值，推荐）",
+  );
+  if (override) {
+    const avg =
+      selectedModels.reduce((s, m) => s + m.contextWindow, 0) /
+        selectedModels.length || 128000;
+    const contextWindow = await pickContextWindow(ctx, Math.round(avg));
+    if (contextWindow === null) return;
+    selectedModels = applyContextWindow(selectedModels, contextWindow);
+  }
 
   const doTest = await ctx.ui.confirm("连通测试", "现在测试连通性？");
   if (doTest) {

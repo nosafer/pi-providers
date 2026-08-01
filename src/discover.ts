@@ -1,12 +1,25 @@
+import {
+  extractContextFromRow,
+  resolveContextWindow,
+} from "./context-infer.ts";
 import { DEFAULT_MODEL_META, type ModelEntry, type ProviderApi } from "./types.ts";
 
-export function toModelEntry(id: string, name?: string): ModelEntry {
+export function toModelEntry(
+  id: string,
+  name?: string,
+  contextWindow?: number,
+): ModelEntry {
+  const cw = resolveContextWindow({
+    id,
+    fromApi: contextWindow,
+    fallback: DEFAULT_MODEL_META.contextWindow,
+  });
   return {
     id,
     name: name ?? id,
     reasoning: DEFAULT_MODEL_META.reasoning,
     input: [...DEFAULT_MODEL_META.input],
-    contextWindow: DEFAULT_MODEL_META.contextWindow,
+    contextWindow: cw,
     maxTokens: DEFAULT_MODEL_META.maxTokens,
     cost: { ...DEFAULT_MODEL_META.cost },
   };
@@ -63,7 +76,9 @@ export async function discoverModels(opts: DiscoverOptions): Promise<DiscoverRes
     }
     return {
       ok: true,
-      models: ids.map(({ id, name }) => toModelEntry(id, name)),
+      models: ids.map(({ id, name, contextWindow }) =>
+        toModelEntry(id, name, contextWindow),
+      ),
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -71,11 +86,13 @@ export async function discoverModels(opts: DiscoverOptions): Promise<DiscoverRes
   }
 }
 
-function extractModelIds(json: unknown): Array<{ id: string; name?: string }> {
+function extractModelIds(
+  json: unknown,
+): Array<{ id: string; name?: string; contextWindow?: number }> {
   if (!json || typeof json !== "object") return [];
   const obj = json as Record<string, unknown>;
   const data = obj.data;
-  const out: Array<{ id: string; name?: string }> = [];
+  const out: Array<{ id: string; name?: string; contextWindow?: number }> = [];
   if (Array.isArray(data)) {
     for (const item of data) {
       if (!item || typeof item !== "object") continue;
@@ -84,6 +101,7 @@ function extractModelIds(json: unknown): Array<{ id: string; name?: string }> {
       out.push({
         id: row.id,
         name: typeof row.name === "string" ? row.name : undefined,
+        contextWindow: extractContextFromRow(row),
       });
     }
     return out;
@@ -95,8 +113,12 @@ function extractModelIds(json: unknown): Array<{ id: string; name?: string }> {
         continue;
       }
       if (item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string") {
-        const row = item as { id: string; name?: string };
-        out.push({ id: row.id, name: row.name });
+        const row = item as Record<string, unknown>;
+        out.push({
+          id: row.id as string,
+          name: typeof row.name === "string" ? row.name : undefined,
+          contextWindow: extractContextFromRow(row),
+        });
       }
     }
     return out;

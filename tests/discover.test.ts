@@ -51,9 +51,13 @@ describe("discoverModels", () => {
 });
 
 describe("toModelEntry", () => {
-  it("fills defaults", () => {
-    const m = toModelEntry("x");
+  it("fills defaults for unknown models", () => {
+    const m = toModelEntry("x-unknown-model");
     expect(m.contextWindow).toBe(128000);
-    expect(m.name).toBe("x");
+    expect(m.name).toBe("x-unknown-model");
+  });
+
+  it("infers gpt-5.5 as 1M", () => {
+    expect(toModelEntry("gpt-5.5").contextWindow).toBe(1_000_000);
   });
 });
