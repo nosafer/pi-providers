@@ -3,19 +3,20 @@
 pi coding agent（`@earendil-works/pi-coding-agent`）交互式模型 / 中转管理 extension。  
 统一入口 **`/providers`**，避免手写 `models.json`。
 
-当前版本：**0.1.0** · 上下文 catalog：**v2**
+当前版本：**0.1.0** · 能力 catalog：**v5**（pi-ai 官方模型表）
 
 ## 功能
 
 - 添加 / 编辑 / 删除自建或第三方中转（OpenAI Completions / Anthropic Messages）
 - 自动发现 `/v1/models`，多选保留模型
 - 密钥写入 `~/.pi/agent/auth.json`，或 `$ENV` 引用
-- 热加载：写配置后当前会话可用，无需重启（`/reload` 后加载新插件代码）
+- 热加载：写配置后当前会话可用（`/reload` 后加载新插件代码）
 - 切换模型：仅本次 / 设为默认
-- **按模型推断 contextWindow**（API 字段 + 官方启发式表）
-- **`sync-catalog`**：一键同步最新能力表（上下文窗口 + 思考强度）
+- **上下文 + 思考强度**：优先查 **pi-ai 官方 catalog**（约 1000+ 模型），其次网关字段 / 启发式
+- **`sync-catalog`**：一键把已配置模型同步到最新能力表
+- **`thinking`**：按当前模型列出官方可用思考档位并设置
 - **`delete-models`**：删除单个模型，使其不再出现在 `/model`
-- 可滚动选择列表（长模型列表光标跟随视口）
+- 可滚动选择列表（长列表光标跟随视口）
 
 ## 安装
 
@@ -39,34 +40,53 @@ pi -e ./index.ts
 | `/providers` | 主菜单 |
 | `/providers list` | 列出 managed provider |
 | `/providers add` | 添加中转 |
-| `/providers edit` | 编辑（url / api / key / context / 删模型 / 刷新 / 重算 context） |
+| `/providers edit` | 编辑 url / api / key / context / 删模型 / 刷新 |
 | `/providers delete-models` | 删除部分模型（`/model` 中消失） |
 | `/providers delete` | 删除整个 provider |
 | `/providers refresh` | 刷新远端模型列表 |
-| `/providers sync-catalog` | **同步最新能力表**（上下文 + 思考强度；插件更新后点这个） |
-| `/providers thinking` | **查看/设置当前模型思考强度**（按模型显示可用级别） |
+| `/providers sync-catalog` | **同步最新能力表**（上下文 + 思考；插件更新后点这个） |
+| `/providers thinking` | **查看/设置思考强度**（按模型官方档位） |
 | `/providers switch` | 切换当前 / 默认模型 |
 | `/providers test` | 连通测试 |
 
 > 旧名 `apply-context` 仍可用，等同于 `sync-catalog`。
 
-### 思考强度（按官方/pi-ai 表，示例）
+### 元数据从哪来（对齐官方）
 
-| 模型族 | 可用级别（pi） |
-|--------|----------------|
-| **kimi-k3** | low, high, **max** |
-| **grok-4.5** | low, medium, high |
-| **gpt-5.5** | low…xhigh |
-| **gpt-5.6-*** | low…**max** |
-| **claude-opus-4.7+** | off…high + **xhigh/max** |
-| **claude-4.5 等** | off…high（扩展思考） |
-| **gemini-3 pro** | **low / high**（底层 LOW/HIGH） |
-| **gemini-3 flash** | 思考常开（无 off） |
-| **glm-5.2 / deepseek-v4** | high, **max** |
+| 优先级 | 来源 |
+|--------|------|
+| 1 | 中转 `GET /v1/models` 返回的 context 字段（若有） |
+| 2 | **pi-ai 内置 catalog**（`src/generated/pi-ai-catalog.json`，自 `@earendil-works/pi-ai` 的 `providers/data/*.json` 生成，与 OpenCode/pi 同源） |
+| 3 | 少量名称启发式（仅未知 id） |
+| 4 | 默认 context 128k；reasoning=false |
+
+再生 catalog（pi 升级后）：
+
+```bash
+npm run regen-catalog   # 读取本机 pi-ai dist/providers/data
+npm test
+```
+
+然后：`/reload` → `/providers sync-catalog`。
+
+### 思考强度示例（摘自 pi-ai 表）
+
+| 模型 | 上下文 | 可用思考档位（pi） |
+|------|--------|-------------------|
+| **kimi-k3** | ~1M | low, high, **max** |
+| **grok-4.5** | 500k | low, medium, high |
+| **gpt-5.5** | 272k（官方默认短窗；可手动/override 到 1.05M） | low…xhigh |
+| **gpt-5.6-sol/terra/luna** | 见 catalog | low…**max** |
+| **claude-opus-4-7** | 1M | off…high + **xhigh/max** |
+| **claude-sonnet-4-5** | 1M（anthropic 表） | off…high |
+| **gemini-3.1-pro** | ~1M | **low / high**（LOW/HIGH） |
+| **gemini-3.6-flash** | ~1M | 思考常开（无 off） |
+| **glm-5.2** | ~1M | high, **max**（及 map 内其它非 null） |
+| **deepseek-v4-pro** | 1M | high, **max** |
 
 ```text
-/providers sync-catalog      # 插件更新后同步
-/providers thinking          # 看当前模型支持哪些级别并切换
+/providers sync-catalog
+/providers thinking
 pi --thinking high
 pi --model mkopen/kimi-k3:max
 ```
@@ -77,34 +97,19 @@ pi --model mkopen/kimi-k3:max
 |------|------|
 | `~/.pi/agent/models.json` | provider + models |
 | `~/.pi/agent/auth.json` | API key |
-| `~/.pi/agent/settings.json` | 默认模型（switch 设为默认时） |
-| `~/.pi/agent/pi-providers.json` | managed 列表、selectedModelIds、catalog 版本 |
+| `~/.pi/agent/settings.json` | 默认模型 |
+| `~/.pi/agent/pi-providers.json` | managed 列表、catalog 版本 |
 
 原生 `/model`、`--provider`/`--model` 仍可用。
-
-## 上下文表（catalog v2）
-
-优先级：接口字段 → 名称启发式 → 128k。
-
-| 示例 | context |
-|------|---------|
-| gpt-5.6-* | 1.05M |
-| gpt-5.x | 1M |
-| grok-4.5 | **500k**（xAI 官方） |
-| grok-4.3 / 4.20 | 1M |
-| glm-5.2 | 1M |
-| glm-5.1 / glm-5 | 200k |
-| gemini-3* | 1M |
-
-插件更新启发式后：`/providers sync-catalog`。
 
 ## 开发
 
 ```bash
 npm test
 npm run typecheck
+npm run regen-catalog   # 从已安装的 pi-ai 重生成官方表
 ```
 
 ## 项目记忆
 
-CodeWork 记忆层：`Projects/pi-providers/`（`PROJECT_*`、`docs/superpowers/`）。
+CodeWork：`Projects/pi-providers/`（`PROJECT_*`、`docs/superpowers/`）。
