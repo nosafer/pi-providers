@@ -17,8 +17,8 @@ const KNOWN_CONTEXT: Array<{ pattern: RegExp; contextWindow: number }> = [
   { pattern: /gemini-2\.5/i, contextWindow: 1_000_000 },
   { pattern: /gemini-2\.0/i, contextWindow: 1_000_000 },
   { pattern: /gemini-1\.5/i, contextWindow: 1_000_000 },
-  // xAI
-  { pattern: /grok-4/i, contextWindow: 256_000 },
+  // xAI — Grok 4.x class commonly 1M on gateways
+  { pattern: /grok-4/i, contextWindow: 1_000_000 },
   { pattern: /grok-3/i, contextWindow: 131_072 },
   // DeepSeek
   { pattern: /deepseek-r1/i, contextWindow: 128_000 },
