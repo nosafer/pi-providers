@@ -603,7 +603,7 @@ async function actionApplyLatestContextCatalog(
 
   if (totalChanged === 0) {
     const ok = await ctx.ui.confirm(
-      "应用最新上下文表",
+      "同步最新能力表",
       `${header}\n预览：无变化（${ids.length} 个 provider）。\n仍写入 catalog 版本标记？`,
     );
     if (!ok) return;
@@ -611,8 +611,8 @@ async function actionApplyLatestContextCatalog(
     const body = previewLines.slice(0, 12).join("\n");
     const more = previewLines.length > 12 ? `\n…共约 ${totalChanged} 处变更` : "";
     const ok = await ctx.ui.confirm(
-      "应用最新上下文表",
-      `${header}\n\n${body || "(含 reasoning/thinkingLevelMap 更新)"}${more}\n\n确认写入并热加载？`,
+      "同步最新能力表",
+      `${header}\n\n${body || "(含 context + 思考强度表更新)"}${more}\n\n确认写入并热加载？`,
     );
     if (!ok) return;
   }
@@ -741,7 +741,7 @@ async function actionThinking(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
 
   if (!useProfile.reasoning) {
     ctx.ui.notify(
-      `${summary}\n（可 /providers apply-context 刷新 reasoning 标记）`,
+      `${summary}\n（可 /providers sync-catalog 刷新能力表）`,
       "warning",
     );
     return;
@@ -895,7 +895,8 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
         "delete-models",
         "delete",
         "refresh",
-        "apply-context",
+        "sync-catalog",
+        "apply-context", // alias
         "thinking",
         "switch",
         "test",
@@ -912,8 +913,8 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
             const side = loadSidecar();
             const cat =
               side.contextCatalogVersion === CONTEXT_CATALOG_VERSION
-                ? `apply-context  应用最新上下文表（已是 v${CONTEXT_CATALOG_VERSION}）`
-                : `apply-context  应用最新上下文表（可更新 → v${CONTEXT_CATALOG_VERSION}）`;
+                ? `sync-catalog  同步最新能力表（已是 v${CONTEXT_CATALOG_VERSION}）`
+                : `sync-catalog  同步最新能力表（可更新 → v${CONTEXT_CATALOG_VERSION}）`;
             const action = await selectScrollable(ctx, "/providers", [
               "list",
               "add",
@@ -927,11 +928,12 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
               "test",
             ]);
             if (!action) return;
-            const route = action.startsWith("apply-context")
-              ? "apply-context"
-              : action.startsWith("thinking")
-                ? "thinking"
-                : action;
+            const route =
+              action.startsWith("sync-catalog") || action.startsWith("apply-context")
+                ? "sync-catalog"
+                : action.startsWith("thinking")
+                  ? "thinking"
+                  : action;
             return handlerRoute(route, ctx, pi);
           }
           return actionList(ctx);
@@ -959,7 +961,8 @@ async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<vo
       return actionDelete(ctx);
     case "refresh":
       return actionRefresh(ctx, pi);
-    case "apply-context":
+    case "sync-catalog":
+    case "apply-context": // backward-compatible alias
       return actionApplyLatestContextCatalog(ctx, pi);
     case "thinking":
       return actionThinking(ctx, pi);

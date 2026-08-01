@@ -44,6 +44,27 @@ describe("inferReasoningProfile — official alignment", () => {
     );
   });
 
+  it("gemini-3.1-pro: LOW/HIGH only", () => {
+    const p = inferReasoningProfile("gemini-3.1-pro-preview");
+    expect(listSupportedThinkingLevels(p).sort()).toEqual(
+      ["high", "low"].sort(),
+    );
+  });
+
+  it("gemini-3.6-flash: no off (always-on)", () => {
+    const p = inferReasoningProfile("gemini-3.6-flash-high");
+    expect(p.reasoning).toBe(true);
+    expect(listSupportedThinkingLevels(p)).not.toContain("off");
+  });
+
+  it("claude-opus-4-7: includes xhigh and max", () => {
+    const p = inferReasoningProfile("claude-opus-4-7");
+    const levels = listSupportedThinkingLevels(p);
+    expect(levels).toContain("max");
+    expect(levels).toContain("xhigh");
+    expect(levels).toContain("high");
+  });
+
   it("unknown model is non-reasoning", () => {
     const p = inferReasoningProfile("some-chat-7b");
     expect(p.reasoning).toBe(false);

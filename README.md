@@ -13,7 +13,7 @@ pi coding agent（`@earendil-works/pi-coding-agent`）交互式模型 / 中转�
 - 热加载：写配置后当前会话可用，无需重启（`/reload` 后加载新插件代码）
 - 切换模型：仅本次 / 设为默认
 - **按模型推断 contextWindow**（API 字段 + 官方启发式表）
-- **`apply-context`**：一键把已配置模型同步到最新上下文表
+- **`sync-catalog`**：一键同步最新能力表（上下文窗口 + 思考强度）
 - **`delete-models`**：删除单个模型，使其不再出现在 `/model`
 - 可滚动选择列表（长模型列表光标跟随视口）
 
@@ -43,20 +43,32 @@ pi -e ./index.ts
 | `/providers delete-models` | 删除部分模型（`/model` 中消失） |
 | `/providers delete` | 删除整个 provider |
 | `/providers refresh` | 刷新远端模型列表 |
-| `/providers apply-context` | **应用最新上下文表**（含思考能力启发式；插件更新后点这个） |
+| `/providers sync-catalog` | **同步最新能力表**（上下文 + 思考强度；插件更新后点这个） |
 | `/providers thinking` | **查看/设置当前模型思考强度**（按模型显示可用级别） |
 | `/providers switch` | 切换当前 / 默认模型 |
 | `/providers test` | 连通测试 |
 
-### 思考强度
+> 旧名 `apply-context` 仍可用，等同于 `sync-catalog`。
 
-pi 级别：`off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`。  
-是否可用取决于模型的 `reasoning` + `thinkingLevelMap`（添加/`apply-context` 时按名称推断）。
+### 思考强度（按官方/pi-ai 表，示例）
+
+| 模型族 | 可用级别（pi） |
+|--------|----------------|
+| **kimi-k3** | low, high, **max** |
+| **grok-4.5** | low, medium, high |
+| **gpt-5.5** | low…xhigh |
+| **gpt-5.6-*** | low…**max** |
+| **claude-opus-4.7+** | off…high + **xhigh/max** |
+| **claude-4.5 等** | off…high（扩展思考） |
+| **gemini-3 pro** | **low / high**（底层 LOW/HIGH） |
+| **gemini-3 flash** | 思考常开（无 off） |
+| **glm-5.2 / deepseek-v4** | high, **max** |
 
 ```text
+/providers sync-catalog      # 插件更新后同步
 /providers thinking          # 看当前模型支持哪些级别并切换
-pi --thinking high           # 启动时
-pi --model mkopen/gpt-5.5:high
+pi --thinking high
+pi --model mkopen/kimi-k3:max
 ```
 
 配置文件：
@@ -84,7 +96,7 @@ pi --model mkopen/gpt-5.5:high
 | glm-5.1 / glm-5 | 200k |
 | gemini-3* | 1M |
 
-插件更新启发式后：`/providers apply-context`。
+插件更新启发式后：`/providers sync-catalog`。
 
 ## 开发
 

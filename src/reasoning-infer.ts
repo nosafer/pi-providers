@@ -214,34 +214,43 @@ const PROFILES: Array<{ pattern: RegExp; profile: ReasoningProfile }> = [
     },
   },
 
-  // —— Anthropic Claude ——
+  // —— Anthropic Claude / Claude Code aliases ——
+  // pi-ai: opus-4.7/4.8/5, sonnet-5, fable → xhigh+max adaptive
   {
-    pattern: /claude-opus-4-[678]|claude-opus-5|claude-sonnet-5|claude-fable/i,
+    pattern:
+      /claude-opus-4-[789]|claude-opus-5|claude-sonnet-5|claude-fable|claude-code|opus-4-[789]|sonnet-5/i,
     profile: {
       reasoning: true,
       thinkingLevelMap: CLAUDE_XHIGH_MAX_MAP,
-      note: "Claude adaptive + xhigh/max",
+      note: "Claude adaptive: off..high + xhigh/max (pi-ai)",
     },
   },
   {
-    pattern: /claude-(opus|sonnet)-4-6|claude-sonnet-4-6/i,
+    pattern: /claude-(opus|sonnet)-4-6|claude-opus-4-6|claude-sonnet-4-6/i,
     profile: {
       reasoning: true,
       thinkingLevelMap: CLAUDE_MAX_MAP,
-      note: "Claude 4.6 + max",
+      note: "Claude 4.6 adaptive + max",
+    },
+  },
+  {
+    pattern: /claude-(opus|sonnet|haiku)-4|claude-3\.7|claude-4|claude-3-5|claude-3\.5/i,
+    profile: {
+      reasoning: true,
+      note: "Claude extended thinking (off..high)",
     },
   },
   {
     pattern: /claude/i,
     profile: {
       reasoning: true,
-      note: "Claude extended thinking (standard levels)",
+      note: "Claude generic thinking",
     },
   },
 
-  // —— Google Gemini ——
+  // —— Google Gemini (pi-ai google.json / vertex) ——
   {
-    pattern: /gemini-3\.[1-9]-pro|gemini-3-pro/i,
+    pattern: /gemini-3(\.[1-9])?-pro|gemini-3-pro/i,
     profile: {
       reasoning: true,
       thinkingLevelMap: {
@@ -253,15 +262,38 @@ const PROFILES: Array<{ pattern: RegExp; profile: ReasoningProfile }> = [
         xhigh: null,
         max: null,
       },
-      note: "Gemini 3 Pro: LOW/HIGH",
+      note: "Gemini 3.x Pro: LOW / HIGH only (always-on base)",
     },
   },
   {
-    pattern: /gemini-3|gemini-2\.5|gemini-flash/i,
+    pattern:
+      /gemini-3(\.[0-9]+)?-?flash|gemini-3\.6|gemini-3\.5-flash|gemini-3-flash|gemini-flash-latest|gemini-flash-lite/i,
     profile: {
       reasoning: true,
       thinkingLevelMap: ALWAYS_ON_MAP,
-      note: "Gemini flash: thinking always on",
+      note: "Gemini 3 Flash: thinking always on (no off)",
+    },
+  },
+  {
+    pattern: /gemini-2\.5-(pro|flash)|gemini-2\.5/i,
+    profile: {
+      reasoning: true,
+      note: "Gemini 2.5: standard thinking levels",
+    },
+  },
+  {
+    pattern: /gemini-2\.0/i,
+    profile: {
+      reasoning: false,
+      note: "Gemini 2.0 Flash: no extended thinking in catalog",
+    },
+  },
+  {
+    pattern: /gemini|gemma-4/i,
+    profile: {
+      reasoning: true,
+      thinkingLevelMap: ALWAYS_ON_MAP,
+      note: "Gemini/Gemma generic thinking-class",
     },
   },
 

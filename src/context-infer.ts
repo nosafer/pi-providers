@@ -8,12 +8,12 @@
  * - 智谱 model overview: GLM-5.2 = 1M; GLM-5.1/5/4.7/4.6 ≈ 200k; GLM-4.5-Air = 128k; GLM-4-Long = 1M
  * - Gemini (common API): 2.x/3.x class often 1M (gateway-dependent)
  *
- * Bump CONTEXT_CATALOG_VERSION when the table below changes so users can
- * run `/providers` →「应用最新上下文表」to refresh existing configs.
+ * Bump CONTEXT_CATALOG_VERSION when context/thinking tables change so users can
+ * run `/providers sync-catalog` to refresh existing configs.
  */
-export const CONTEXT_CATALOG_VERSION = 3;
+export const CONTEXT_CATALOG_VERSION = 4;
 export const CONTEXT_CATALOG_LABEL =
-  "v3 (2026-08-01: context+thinking official; kimi-k3 low/high/max)";
+  "v4 (context+thinking: kimi-k3/claude/gemini/gpt/grok official maps)";
 
 /** More specific patterns first. */
 const KNOWN_CONTEXT: Array<{ pattern: RegExp; contextWindow: number; note?: string }> = [
