@@ -20,9 +20,37 @@ import { publishManagedProvider } from "./runtime-publish.ts";
 import { switchModel } from "./switch-model.ts";
 import { testConnection } from "./test-connection.ts";
 import type { KeyMode, ModelEntry, ProviderApi } from "./types.ts";
-import { PROVIDER_ID_RE } from "./types.ts";
+import {
+  applyContextWindow,
+  CONTEXT_WINDOW_PRESETS,
+  PROVIDER_ID_RE,
+} from "./types.ts";
 
 type Ctx = ExtensionCommandContext;
+
+async function pickContextWindow(ctx: Ctx, current = 128000): Promise<number | null> {
+  const labels = CONTEXT_WINDOW_PRESETS.map((p) =>
+    p.value === current ? `${p.label}  ← 当前` : p.label,
+  );
+  const choice = await ctx.ui.select(
+    `上下文窗口 contextWindow（当前 ${current}）`,
+    labels,
+  );
+  if (!choice) return null;
+  const preset = CONTEXT_WINDOW_PRESETS.find((p) => choice.startsWith(p.label));
+  if (!preset) return null;
+  if (preset.value === -1) {
+    const raw = (await ctx.ui.input("自定义 contextWindow（token 数）", String(current)))?.trim();
+    if (!raw) return null;
+    const n = Number(raw.replace(/[_,\s]/g, ""));
+    if (!Number.isFinite(n) || n < 1000) {
+      ctx.ui.notify("无效的 contextWindow", "error");
+      return null;
+    }
+    return Math.floor(n);
+  }
+  return preset.value;
+}
 
 async function pickModels(
   ctx: Ctx,
@@ -172,6 +200,10 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     return;
   }
 
+  const contextWindow = await pickContextWindow(ctx, 128000);
+  if (contextWindow === null) return;
+  selectedModels = applyContextWindow(selectedModels, contextWindow);
+
   const doTest = await ctx.ui.confirm("连通测试", "现在测试连通性？");
   if (doTest) {
     const t = await testConnection({
@@ -248,6 +280,7 @@ async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     "baseUrl",
     "api",
     "key",
+    "contextWindow（上下文窗口）",
     "models (手填覆盖)",
     "refresh 模型列表",
   ]);
@@ -285,14 +318,23 @@ async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
       envVar = (await ctx.ui.input("环境变量名", "MY_API_KEY"))?.trim()?.replace(/^\$/, "");
       if (!envVar) return;
     }
+  } else if (field === "contextWindow（上下文窗口）") {
+    const current = modelList[0]?.contextWindow ?? 128000;
+    const cw = await pickContextWindow(ctx, current);
+    if (cw === null) return;
+    modelList = applyContextWindow(modelList, cw);
   } else if (field === "models (手填覆盖)") {
     const cur = modelList.map((m) => m.id).join(", ");
     const manual = (await ctx.ui.input("模型 id（逗号分隔）", cur))?.trim();
     if (!manual) return;
-    modelList = manual
-      .split(/[,\s]+/)
-      .filter(Boolean)
-      .map((x) => toModelEntry(x));
+    const currentCw = modelList[0]?.contextWindow ?? 128000;
+    modelList = applyContextWindow(
+      manual
+        .split(/[,\s]+/)
+        .filter(Boolean)
+        .map((x) => toModelEntry(x)),
+      currentCw,
+    );
   }
 
   if (field !== "key") {

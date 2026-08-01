@@ -74,3 +74,22 @@ export const DEFAULT_MODEL_META = {
 };
 
 export const PROVIDER_ID_RE = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** Common context window presets shown in /providers UI */
+export const CONTEXT_WINDOW_PRESETS: Array<{ label: string; value: number }> = [
+  { label: "128k (128000)", value: 128000 },
+  { label: "200k (200000)", value: 200000 },
+  { label: "256k (256000)", value: 256000 },
+  { label: "1M (1000000)", value: 1000000 },
+  { label: "2M (2000000)", value: 2000000 },
+  { label: "自定义…", value: -1 },
+];
+
+export function applyContextWindow(models: ModelEntry[], contextWindow: number): ModelEntry[] {
+  return models.map((m) => ({
+    ...m,
+    contextWindow,
+    // keep existing maxTokens unless it absurdly exceeds the window
+    maxTokens: Math.min(m.maxTokens || DEFAULT_MODEL_META.maxTokens, contextWindow),
+  }));
+}
