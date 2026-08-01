@@ -13,10 +13,15 @@ import {
   loadAuth,
   loadModels,
   loadSidecar,
+  saveSidecar,
   setDefaultModel,
   upsertManagedProvider,
 } from "./store.ts";
-import { resolveContextWindow } from "./context-infer.ts";
+import {
+  CONTEXT_CATALOG_LABEL,
+  CONTEXT_CATALOG_VERSION,
+  resolveContextWindow,
+} from "./context-infer.ts";
 import { publishManagedProvider } from "./runtime-publish.ts";
 import { selectScrollable } from "./select-ui.ts";
 import { switchModel } from "./switch-model.ts";
@@ -469,33 +474,34 @@ async function actionRemoveModels(
   ctx.ui.notify(`已移除 ${picked.join(", ")}，剩余 ${remaining.length} 个`, "info");
 }
 
-async function actionReinferContext(
-  ctx: Ctx,
-  pi: ExtensionAPI,
-  presetId?: string,
-): Promise<void> {
-  const id = presetId ?? (await selectManaged(ctx, "重算哪个 provider 的 context？"));
-  if (!id) return;
-  const p = loadModels().providers?.[id];
-  const meta = loadSidecar().providers[id];
-  if (!p?.models?.length || !meta) return;
-
-  const updated = p.models.map((m) => ({
-    ...m,
-    contextWindow: resolveContextWindow({ id: m.id }),
-  }));
+function previewReinfer(providerId: string): {
+  changed: number;
+  summary: string;
+  updated: ModelEntry[];
+} | null {
+  const p = loadModels().providers?.[providerId];
+  if (!p?.models?.length) return null;
+  let changed = 0;
+  const updated = p.models.map((m) => {
+    const next = resolveContextWindow({ id: m.id });
+    if (next !== m.contextWindow) changed += 1;
+    return { ...m, contextWindow: next };
+  });
   const summary = updated
-    .slice(0, 8)
     .map((m) => `${m.id}:${Math.round(m.contextWindow / 1000)}k`)
     .join(", ");
-  const ok = await ctx.ui.confirm("重算 context", `将应用：\n${summary}`);
-  if (!ok) return;
+  return { changed, summary, updated };
+}
 
-  const resolved = resolveApiKey(id, p.apiKey);
+function writeReinfer(providerId: string, updated: ModelEntry[]): void {
+  const p = loadModels().providers?.[providerId];
+  const meta = loadSidecar().providers[providerId];
+  if (!p || !meta) return;
+  const resolved = resolveApiKey(providerId, p.apiKey);
   const keyMode: KeyMode = p.apiKey?.startsWith("$") ? "env" : "literal";
   upsertManagedProvider({
-    id,
-    displayName: id,
+    id: providerId,
+    displayName: providerId,
     baseUrl: p.baseUrl ?? "",
     api: (p.api ?? meta.api) as ProviderApi,
     keyMode,
@@ -503,9 +509,98 @@ async function actionReinferContext(
     envVar: keyMode === "env" ? resolved.envVar : undefined,
     models: updated,
   });
+}
+
+async function actionReinferContext(
+  ctx: Ctx,
+  pi: ExtensionAPI,
+  presetId?: string,
+): Promise<void> {
+  const id = presetId ?? (await selectManaged(ctx, "重算哪个 provider 的 context？"));
+  if (!id) return;
+  const preview = previewReinfer(id);
+  if (!preview) {
+    ctx.ui.notify("没有可更新的模型", "info");
+    return;
+  }
+  const ok = await ctx.ui.confirm("重算 context", `将应用：\n${preview.summary}`);
+  if (!ok) return;
+  writeReinfer(id, preview.updated);
   const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
-  ctx.ui.notify("已按官方启发式更新 contextWindow", "info");
+  ctx.ui.notify(`已更新（变更 ${preview.changed} 个模型）`, "info");
+}
+
+/**
+ * One-click: apply latest built-in context catalog to ALL managed providers.
+ * Use after plugin updates when context heuristics change.
+ */
+async function actionApplyLatestContextCatalog(
+  ctx: Ctx,
+  pi: ExtensionAPI,
+): Promise<void> {
+  const side = loadSidecar();
+  const current = side.contextCatalogVersion ?? 0;
+  const ids = listManaged();
+  if (ids.length === 0) {
+    ctx.ui.notify("没有 managed provider", "info");
+    return;
+  }
+
+  const previewLines: string[] = [];
+  let totalChanged = 0;
+  for (const id of ids) {
+    const p = loadModels().providers?.[id];
+    if (!p?.models?.length) continue;
+    const parts: string[] = [];
+    for (const m of p.models) {
+      const next = resolveContextWindow({ id: m.id });
+      if (next !== m.contextWindow) {
+        totalChanged += 1;
+        parts.push(
+          `${m.id} ${Math.round(m.contextWindow / 1000)}k→${Math.round(next / 1000)}k`,
+        );
+      }
+    }
+    if (parts.length) previewLines.push(`${id}: ${parts.join(", ")}`);
+  }
+
+  const header =
+    current === CONTEXT_CATALOG_VERSION
+      ? `当前已是 ${CONTEXT_CATALOG_LABEL}。仍可强制重算。`
+      : `当前 catalog: v${current || "未记录"} → 将应用 ${CONTEXT_CATALOG_LABEL}`;
+
+  if (totalChanged === 0) {
+    const ok = await ctx.ui.confirm(
+      "应用最新上下文表",
+      `${header}\n预览：无数值变化（${ids.length} 个 provider）。\n仍写入 catalog 版本标记？`,
+    );
+    if (!ok) return;
+  } else {
+    const body = previewLines.slice(0, 12).join("\n");
+    const more = previewLines.length > 12 ? `\n…共 ${totalChanged} 处变更` : "";
+    const ok = await ctx.ui.confirm(
+      "应用最新上下文表",
+      `${header}\n\n${body}${more}\n\n确认写入 models.json 并热加载？`,
+    );
+    if (!ok) return;
+  }
+
+  for (const id of ids) {
+    const preview = previewReinfer(id);
+    if (preview) writeReinfer(id, preview.updated);
+    await publishManagedProvider(pi, ctx.modelRegistry, id);
+  }
+
+  const nextSide = loadSidecar();
+  nextSide.contextCatalogVersion = CONTEXT_CATALOG_VERSION;
+  nextSide.contextCatalogAppliedAt = new Date().toISOString();
+  saveSidecar(nextSide);
+
+  ctx.ui.notify(
+    `已应用 ${CONTEXT_CATALOG_LABEL}，变更 ${totalChanged} 处`,
+    "info",
+  );
 }
 
 async function actionDelete(ctx: Ctx): Promise<void> {
@@ -647,6 +742,7 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
         "delete-models",
         "delete",
         "refresh",
+        "apply-context",
         "switch",
         "test",
       ];
@@ -659,6 +755,11 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
       try {
         if (!sub || sub === "list") {
           if (!sub) {
+            const side = loadSidecar();
+            const cat =
+              side.contextCatalogVersion === CONTEXT_CATALOG_VERSION
+                ? `apply-context  应用最新上下文表（已是 v${CONTEXT_CATALOG_VERSION}）`
+                : `apply-context  应用最新上下文表（可更新 → v${CONTEXT_CATALOG_VERSION}）`;
             const action = await selectScrollable(ctx, "/providers", [
               "list",
               "add",
@@ -666,11 +767,15 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
               "delete-models",
               "delete",
               "refresh",
+              cat,
               "switch",
               "test",
             ]);
             if (!action) return;
-            return handlerRoute(action, ctx, pi);
+            const route = action.startsWith("apply-context")
+              ? "apply-context"
+              : action;
+            return handlerRoute(route, ctx, pi);
           }
           return actionList(ctx);
         }
@@ -697,6 +802,8 @@ async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<vo
       return actionDelete(ctx);
     case "refresh":
       return actionRefresh(ctx, pi);
+    case "apply-context":
+      return actionApplyLatestContextCatalog(ctx, pi);
     case "switch":
       return actionSwitch(ctx, pi);
     case "test":

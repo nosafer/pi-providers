@@ -63,6 +63,9 @@ export interface SidecarFile {
   version: 1;
   managedProviders: string[];
   providers: Record<string, ManagedProviderMeta>;
+  /** Last applied context-infer catalog version (from CONTEXT_CATALOG_VERSION). */
+  contextCatalogVersion?: number;
+  contextCatalogAppliedAt?: string;
 }
 
 export const DEFAULT_MODEL_META = {
