@@ -17,6 +17,7 @@ import {
   upsertManagedProvider,
 } from "./store.ts";
 import { publishManagedProvider } from "./runtime-publish.ts";
+import { selectScrollable } from "./select-ui.ts";
 import { switchModel } from "./switch-model.ts";
 import { testConnection } from "./test-connection.ts";
 import type { KeyMode, ModelEntry, ProviderApi } from "./types.ts";
@@ -32,7 +33,8 @@ async function pickContextWindow(ctx: Ctx, current = 128000): Promise<number | n
   const labels = CONTEXT_WINDOW_PRESETS.map((p) =>
     p.value === current ? `${p.label}  ← 当前` : p.label,
   );
-  const choice = await ctx.ui.select(
+  const choice = await selectScrollable(
+    ctx,
     `上下文窗口 contextWindow（当前 ${current}）`,
     labels,
   );
@@ -61,7 +63,13 @@ async function pickModels(
   let selected = new Set(initial);
   while (true) {
     const labels = formatMultiSelectLabels(ids, selected);
-    const choice = await ctx.ui.select(`${title}（已选 ${selected.size}）`, labels);
+    // SelectList: maxVisible rows + auto scroll with cursor (fixes non-scrolling ctx.ui.select)
+    const choice = await selectScrollable(
+      ctx,
+      `${title}（已选 ${selected.size}）  空格/回车切换勾选`,
+      labels,
+      14,
+    );
     if (!choice) return null;
     const parsed = parseMultiSelectChoice(choice);
     if (parsed === "cancel") return null;
@@ -108,7 +116,7 @@ async function actionList(ctx: Ctx): Promise<void> {
     return `${id}  ${meta?.api ?? p?.api ?? "?"}  models:${n}  ${p?.baseUrl ?? ""}${cur}`;
   });
   lines.push(`--- 当前会话: ${current}`);
-  await ctx.ui.select("Managed providers", lines);
+  await selectScrollable(ctx, "Managed providers", lines);
 }
 
 async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
@@ -131,14 +139,14 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   const baseUrl = (await ctx.ui.input("baseUrl", "https://"))?.trim();
   if (!baseUrl) return;
 
-  const apiLabel = await ctx.ui.select("API 类型", [
+  const apiLabel = await selectScrollable(ctx, "API 类型", [
     "openai-completions",
     "anthropic-messages",
   ]);
   if (!apiLabel) return;
   const api = apiLabel as ProviderApi;
 
-  const keyModeLabel = await ctx.ui.select("密钥方式", [
+  const keyModeLabel = await selectScrollable(ctx, "密钥方式", [
     "literal — 写入 auth.json",
     "env — models.json 引用 $ENV",
   ]);
@@ -236,7 +244,7 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     `立即切换到 ${id}/${selectedModels[0].id}？`,
   );
   if (goSwitch) {
-    const scope = await ctx.ui.select("范围", ["仅本次", "设为默认"]);
+    const scope = await selectScrollable(ctx, "范围", ["仅本次", "设为默认"]);
     if (scope) {
       const result = await switchModel({
         providerId: id,
@@ -260,8 +268,7 @@ async function selectManaged(ctx: Ctx, title: string): Promise<string | null> {
     ctx.ui.notify("没有 managed provider", "info");
     return null;
   }
-  const choice = await ctx.ui.select(title, ids);
-  return choice ?? null;
+  return selectScrollable(ctx, title, ids);
 }
 
 async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
@@ -276,7 +283,7 @@ async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     return;
   }
 
-  const field = await ctx.ui.select("改什么？", [
+  const field = await selectScrollable(ctx, "改什么？", [
     "baseUrl",
     "api",
     "key",
@@ -301,11 +308,14 @@ async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   if (field === "baseUrl") {
     baseUrl = (await ctx.ui.input("baseUrl", baseUrl))?.trim() || baseUrl;
   } else if (field === "api") {
-    const a = await ctx.ui.select("API", ["openai-completions", "anthropic-messages"]);
+    const a = await selectScrollable(ctx, "API", [
+      "openai-completions",
+      "anthropic-messages",
+    ]);
     if (!a) return;
     api = a as ProviderApi;
   } else if (field === "key") {
-    const mode = await ctx.ui.select("密钥方式", [
+    const mode = await selectScrollable(ctx, "密钥方式", [
       "literal — auth.json",
       "env — $ENV",
     ]);
@@ -447,12 +457,13 @@ async function actionSwitch(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     ctx.ui.notify("该 provider 无模型", "error");
     return;
   }
-  const modelId = await ctx.ui.select(
+  const modelId = await selectScrollable(
+    ctx,
     "选择模型",
     models.map((m) => m.id),
   );
   if (!modelId) return;
-  const scope = await ctx.ui.select("范围", ["仅本次", "设为默认"]);
+  const scope = await selectScrollable(ctx, "范围", ["仅本次", "设为默认"]);
   if (!scope) return;
   // Ensure live registry has this provider before setModel
   await publishManagedProvider(pi, ctx.modelRegistry, id);
@@ -500,7 +511,7 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
       try {
         if (!sub || sub === "list") {
           if (!sub) {
-            const action = await ctx.ui.select("/providers", [
+            const action = await selectScrollable(ctx, "/providers", [
               "list",
               "add",
               "edit",
