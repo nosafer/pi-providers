@@ -1,0 +1,6 @@
+node_modules/
+.tmp/
+.rt-worktrees/
+.codegraph/
+.superpowers/
+*.tmp.*
