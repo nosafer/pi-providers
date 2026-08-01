@@ -6,13 +6,20 @@ import {
 } from "../src/context-infer.ts";
 
 describe("inferContextFromModelId", () => {
-  it("knows gpt-5.5 as 1M", () => {
+  it("knows gpt-5.5 / gpt-5.6 from OpenAI-class heuristics", () => {
     expect(inferContextFromModelId("gpt-5.5")).toBe(1_000_000);
+    expect(inferContextFromModelId("gpt-5.6-luna")).toBe(1_050_000);
   });
 
-  it("knows glm-5.1 as 256k", () => {
-    expect(inferContextFromModelId("glm-5.1")).toBe(256_000);
-    expect(inferContextFromModelId("glm-5")).toBe(256_000);
+  it("uses official xAI windows for grok-4.x", () => {
+    expect(inferContextFromModelId("grok-4.5")).toBe(500_000);
+    expect(inferContextFromModelId("grok-4.3")).toBe(1_000_000);
+  });
+
+  it("uses 智谱 overview for glm-5.x", () => {
+    expect(inferContextFromModelId("glm-5.2")).toBe(1_000_000);
+    expect(inferContextFromModelId("glm-5.1")).toBe(200_000);
+    expect(inferContextFromModelId("glm-5")).toBe(200_000);
   });
 
   it("knows gemini-3 as 1M", () => {
@@ -39,5 +46,9 @@ describe("resolveContextWindow", () => {
 
   it("falls back to heuristics", () => {
     expect(resolveContextWindow({ id: "gpt-5.5", fallback: 128000 })).toBe(1_000_000);
+  });
+
+  it("prefers grok-4.5 = 500k not 1M", () => {
+    expect(resolveContextWindow({ id: "grok-4.5" })).toBe(500_000);
   });
 });

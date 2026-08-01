@@ -16,6 +16,7 @@ import {
   setDefaultModel,
   upsertManagedProvider,
 } from "./store.ts";
+import { resolveContextWindow } from "./context-infer.ts";
 import { publishManagedProvider } from "./runtime-publish.ts";
 import { selectScrollable } from "./select-ui.ts";
 import { switchModel } from "./switch-model.ts";
@@ -304,13 +305,25 @@ async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     "api",
     "key",
     "contextWindow（上下文窗口）",
+    "删除模型（从 /model 移除）",
     "models (手填覆盖)",
     "refresh 模型列表",
+    "按官方启发式重算 context",
   ]);
   if (!field) return;
 
   if (field === "refresh 模型列表") {
     await actionRefresh(ctx, pi, id);
+    return;
+  }
+
+  if (field === "删除模型（从 /model 移除）") {
+    await actionRemoveModels(ctx, pi, id);
+    return;
+  }
+
+  if (field === "按官方启发式重算 context") {
+    await actionReinferContext(ctx, pi, id);
     return;
   }
 
@@ -383,6 +396,116 @@ async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(`已更新 ${id}`, "info");
+}
+
+/** Remove selected model ids from a managed provider so they disappear from /model. */
+async function actionRemoveModels(
+  ctx: Ctx,
+  pi: ExtensionAPI,
+  presetId?: string,
+): Promise<void> {
+  const id = presetId ?? (await selectManaged(ctx, "从哪个 provider 删除模型？"));
+  if (!id) return;
+  const modelsFile = loadModels();
+  const p = modelsFile.providers?.[id];
+  const meta = loadSidecar().providers[id];
+  if (!p?.models?.length || !meta) {
+    ctx.ui.notify("没有可删的模型", "info");
+    return;
+  }
+
+  const picked = await pickModels(
+    ctx,
+    p.models.map((m) => m.id),
+    [],
+    "勾选要删除的模型（Done 确认删除）",
+  );
+  if (picked === null) return;
+  if (picked.length === 0) {
+    ctx.ui.notify("未勾选任何模型", "info");
+    return;
+  }
+
+  const remove = new Set(picked);
+  const remaining = p.models.filter((m) => !remove.has(m.id));
+  if (remaining.length === 0) {
+    const ok = await ctx.ui.confirm(
+      "无剩余模型",
+      "全部模型都勾选了。是否直接删除整个 provider？",
+    );
+    if (ok) {
+      deleteManagedProvider(id);
+      try {
+        pi.unregisterProvider(id);
+      } catch {
+        // registry may not have it registered yet
+      }
+      await ctx.modelRegistry.refresh();
+      ctx.ui.notify(`已删除 provider ${id}`, "info");
+    }
+    return;
+  }
+
+  const ok = await ctx.ui.confirm(
+    "确认删除",
+    `将从 ${id} 移除 ${picked.length} 个模型，之后 /model 不再显示它们。`,
+  );
+  if (!ok) return;
+
+  const resolved = resolveApiKey(id, p.apiKey);
+  const keyMode: KeyMode = p.apiKey?.startsWith("$") ? "env" : "literal";
+  upsertManagedProvider({
+    id,
+    displayName: id,
+    baseUrl: p.baseUrl ?? "",
+    api: (p.api ?? meta.api) as ProviderApi,
+    keyMode,
+    apiKey: keyMode === "literal" ? resolved.key : undefined,
+    envVar: keyMode === "env" ? resolved.envVar : undefined,
+    models: remaining,
+  });
+  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  if (!published.ok) ctx.ui.notify(published.message, "warning");
+  ctx.ui.notify(`已移除 ${picked.join(", ")}，剩余 ${remaining.length} 个`, "info");
+}
+
+async function actionReinferContext(
+  ctx: Ctx,
+  pi: ExtensionAPI,
+  presetId?: string,
+): Promise<void> {
+  const id = presetId ?? (await selectManaged(ctx, "重算哪个 provider 的 context？"));
+  if (!id) return;
+  const p = loadModels().providers?.[id];
+  const meta = loadSidecar().providers[id];
+  if (!p?.models?.length || !meta) return;
+
+  const updated = p.models.map((m) => ({
+    ...m,
+    contextWindow: resolveContextWindow({ id: m.id }),
+  }));
+  const summary = updated
+    .slice(0, 8)
+    .map((m) => `${m.id}:${Math.round(m.contextWindow / 1000)}k`)
+    .join(", ");
+  const ok = await ctx.ui.confirm("重算 context", `将应用：\n${summary}`);
+  if (!ok) return;
+
+  const resolved = resolveApiKey(id, p.apiKey);
+  const keyMode: KeyMode = p.apiKey?.startsWith("$") ? "env" : "literal";
+  upsertManagedProvider({
+    id,
+    displayName: id,
+    baseUrl: p.baseUrl ?? "",
+    api: (p.api ?? meta.api) as ProviderApi,
+    keyMode,
+    apiKey: keyMode === "literal" ? resolved.key : undefined,
+    envVar: keyMode === "env" ? resolved.envVar : undefined,
+    models: updated,
+  });
+  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  if (!published.ok) ctx.ui.notify(published.message, "warning");
+  ctx.ui.notify("已按官方启发式更新 contextWindow", "info");
 }
 
 async function actionDelete(ctx: Ctx): Promise<void> {
@@ -517,7 +640,16 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
   pi.registerCommand("providers", {
     description: "管理自建/第三方模型中转 (pi-providers)",
     getArgumentCompletions: (prefix) => {
-      const subs = ["list", "add", "edit", "delete", "refresh", "switch", "test"];
+      const subs = [
+        "list",
+        "add",
+        "edit",
+        "delete-models",
+        "delete",
+        "refresh",
+        "switch",
+        "test",
+      ];
       return subs
         .filter((s) => s.startsWith(prefix))
         .map((s) => ({ value: s, label: s }));
@@ -531,6 +663,7 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
               "list",
               "add",
               "edit",
+              "delete-models",
               "delete",
               "refresh",
               "switch",
@@ -558,6 +691,8 @@ async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<vo
       return actionAdd(ctx, pi);
     case "edit":
       return actionEdit(ctx, pi);
+    case "delete-models":
+      return actionRemoveModels(ctx, pi);
     case "delete":
       return actionDelete(ctx);
     case "refresh":
