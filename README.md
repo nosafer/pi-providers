@@ -11,14 +11,14 @@ npm test
 npm run typecheck
 
 # 临时加载
-pi -e ./src/index.ts
+pi -e ./index.ts
 ```
 
 ## 安装（全局）
 
 ```bash
 ln -sfn "$(pwd)" ~/.pi/agent/extensions/pi-providers
-# 重启 pi 或 /reload 后使用 /providers
+# 需存在 index.ts（已提供）。重启 pi 或 /reload 后使用 /providers
 ```
 
 ## 命令
