@@ -24,9 +24,33 @@ pi coding agent（`@earendil-works/pi-coding-agent`）交互式模型 / 中转�
 ```bash
 cd Projects/pi-providers/code
 npm install
-ln -sfn "$(pwd)" ~/.pi/agent/extensions/pi-providers
+./scripts/deploy-plugin.sh   # 部署到 ~/.pi/agent/extensions/pi-providers（独立副本）
 # 重启 pi 或 /reload
 ```
+
+插件目录是**独立部署产物**（不含 `.git` / `node_modules` / `tests` / `scripts`），与源码仓库分离。
+
+## 更新
+
+### 改了插件代码
+
+```bash
+./scripts/deploy-plugin.sh   # 重新部署到插件目录
+# 重启 pi 或 /reload
+```
+
+### pi 升级后（模型表更新）
+
+直接在 pi 里运行：
+
+```
+/providers sync-catalog
+```
+
+插件会自动检测 pi-ai 官方数据是否更新 → 自动重新生成 catalog → 应用到你的模型配置。
+不需要重启，不需要手动跑脚本。
+
+> 注意：auto-regen 写入的是**插件目录**的 catalog（独立副本）。若之后要改插件代码并重新部署，部署脚本会自动把更新的 catalog 同步回源码仓库，保持两者一致。
 
 开发临时加载：
 
