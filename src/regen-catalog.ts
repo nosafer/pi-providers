@@ -7,10 +7,10 @@
  * regenerate by hand after a pi upgrade.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findPiAiDataFiles } from "./pi-ai-data.ts";
+import { findPiAiDataDir, findPiAiDataFiles } from "./pi-ai-data.ts";
 
 const OUT_PATH = fileURLToPath(new URL("./generated/pi-ai-catalog.json", import.meta.url));
 
@@ -134,4 +134,29 @@ export function regenCatalogFromInstalledPiAi(): number | undefined {
   mkdirSync(dirname(OUT_PATH), { recursive: true });
   writeFileSync(OUT_PATH, JSON.stringify(out), "utf8");
   return out.modelCount;
+}
+
+/**
+ * Check whether installed pi-ai data is newer than the current catalog and
+ * regenerate if so. Returns a user-facing note when a regen happened, else
+ * undefined. Cheap when nothing changed (only stat calls). Safe for
+ * concurrent calls; the write is idempotent.
+ */
+export function maybeAutoRegenCatalog(): string | undefined {
+  const dataDir = findPiAiDataDir();
+  if (!dataDir) return undefined;
+  if (!existsSync(OUT_PATH)) {
+    const n = regenCatalogFromInstalledPiAi();
+    return n !== undefined ? `已从 pi-ai 官方数据生成 catalog（${n} 模型）` : undefined;
+  }
+  const catMtime = statSync(OUT_PATH).mtimeMs;
+  const dataFiles = findPiAiDataFiles();
+  const newest = dataFiles
+    .map((f) => statSync(f).mtimeMs)
+    .reduce((a, b) => Math.max(a, b), 0);
+  if (newest > catMtime + 1000) {
+    const n = regenCatalogFromInstalledPiAi();
+    return n !== undefined ? `pi-ai 官方数据已更新 → 自动重新生成 catalog（${n} 模型）` : undefined;
+  }
+  return undefined;
 }

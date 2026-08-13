@@ -1,6 +1,4 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { discoverModels, toModelEntry } from "./discover.ts";
 import {
   formatMultiSelectLabels,
@@ -8,8 +6,7 @@ import {
   toggleMultiSelectState,
 } from "./multi-select.ts";
 import { planRefresh, applyRefreshSelection } from "./refresh-models.ts";
-import { regenCatalogFromInstalledPiAi } from "./regen-catalog.ts";
-import { findPiAiDataDir, findPiAiDataFiles } from "./pi-ai-data.ts";
+import { maybeAutoRegenCatalog } from "./regen-catalog.ts";
 import {
   deleteManagedProvider,
   isManaged,
@@ -555,32 +552,6 @@ async function actionReinferContext(
   const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(`已更新（变更 ${preview.changed} 个模型）`, "info");
-}
-
-/**
- * Auto-regenerate the bundled catalog from installed pi-ai data when the
- * pi-ai data files are newer than the catalog file (pi upgrade scenario).
- * Returns a user-facing note when a regen happened, else undefined.
- */
-function maybeAutoRegenCatalog(): string | undefined {
-  const dataDir = findPiAiDataDir();
-  if (!dataDir) return undefined;
-  const catalogPath = new URL("./generated/pi-ai-catalog.json", import.meta.url);
-  const catPath = fileURLToPath(catalogPath);
-  if (!existsSync(catPath)) {
-    const n = regenCatalogFromInstalledPiAi();
-    return n !== undefined ? `已从 pi-ai 官方数据生成 catalog（${n} 模型）` : undefined;
-  }
-  const catMtime = statSync(catPath).mtimeMs;
-  const dataFiles = findPiAiDataFiles();
-  const newest = dataFiles
-    .map((f) => statSync(f).mtimeMs)
-    .reduce((a, b) => Math.max(a, b), 0);
-  if (newest > catMtime + 1000) {
-    const n = regenCatalogFromInstalledPiAi();
-    return n !== undefined ? `pi-ai 官方数据已更新 → 自动重新生成 catalog（${n} 模型）` : undefined;
-  }
-  return undefined;
 }
 
 /**
