@@ -956,7 +956,9 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
                 ? "sync-catalog"
                 : action.startsWith("thinking")
                   ? "thinking"
-                  : action;
+                  : action.startsWith("auto-regen")
+                    ? "auto-regen"
+                    : action;
             return handlerRoute(route, ctx, pi);
           }
           return actionList(ctx);
