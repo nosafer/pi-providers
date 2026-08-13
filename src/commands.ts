@@ -1,4 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { existsSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { discoverModels, toModelEntry } from "./discover.ts";
 import {
   formatMultiSelectLabels,
@@ -6,6 +8,8 @@ import {
   toggleMultiSelectState,
 } from "./multi-select.ts";
 import { planRefresh, applyRefreshSelection } from "./refresh-models.ts";
+import { regenCatalogFromInstalledPiAi } from "./regen-catalog.ts";
+import { findPiAiDataDir, findPiAiDataFiles } from "./pi-ai-data.ts";
 import {
   deleteManagedProvider,
   isManaged,
@@ -554,6 +558,32 @@ async function actionReinferContext(
 }
 
 /**
+ * Auto-regenerate the bundled catalog from installed pi-ai data when the
+ * pi-ai data files are newer than the catalog file (pi upgrade scenario).
+ * Returns a user-facing note when a regen happened, else undefined.
+ */
+function maybeAutoRegenCatalog(): string | undefined {
+  const dataDir = findPiAiDataDir();
+  if (!dataDir) return undefined;
+  const catalogPath = new URL("./generated/pi-ai-catalog.json", import.meta.url);
+  const catPath = fileURLToPath(catalogPath);
+  if (!existsSync(catPath)) {
+    const n = regenCatalogFromInstalledPiAi();
+    return n !== undefined ? `已从 pi-ai 官方数据生成 catalog（${n} 模型）` : undefined;
+  }
+  const catMtime = statSync(catPath).mtimeMs;
+  const dataFiles = findPiAiDataFiles();
+  const newest = dataFiles
+    .map((f) => statSync(f).mtimeMs)
+    .reduce((a, b) => Math.max(a, b), 0);
+  if (newest > catMtime + 1000) {
+    const n = regenCatalogFromInstalledPiAi();
+    return n !== undefined ? `pi-ai 官方数据已更新 → 自动重新生成 catalog（${n} 模型）` : undefined;
+  }
+  return undefined;
+}
+
+/**
  * One-click: apply latest built-in context catalog to ALL managed providers.
  * Use after plugin updates when context heuristics change.
  */
@@ -561,6 +591,12 @@ async function actionApplyLatestContextCatalog(
   ctx: Ctx,
   pi: ExtensionAPI,
 ): Promise<void> {
+  // Auto-regenerate the catalog from installed pi-ai data if it changed
+  // since we last wrote it (pi upgrade scenario). No-op when data is
+  // unchanged or pi-ai data cannot be located.
+  const regenNote = maybeAutoRegenCatalog();
+  if (regenNote) ctx.ui.notify(regenNote, "info");
+
   const side = loadSidecar();
   const current = side.contextCatalogVersion ?? 0;
   const ids = listManaged();

@@ -32,7 +32,7 @@ type CatalogFile = {
       reasoning: boolean;
       thinkingLevelMap?: ThinkingLevelMap;
       source: string;
-      canonicalId: string;
+      canonicalId?: string;
       input?: string[];
     }
   >;
@@ -94,7 +94,7 @@ export function lookupPiAiCatalog(modelId: string): CatalogHit | undefined {
   for (const k of tryKeys) {
     const hit = models[k];
     if (hit) {
-      return { ...hit, matchedKey: k };
+      return { ...hit, canonicalId: hit.canonicalId ?? k, matchedKey: k };
     }
   }
 
@@ -115,7 +115,7 @@ export function lookupPiAiCatalog(modelId: string): CatalogHit | undefined {
   }
   if (best && best.score >= 10) {
     const hit = models[best.k];
-    if (hit) return { ...hit, matchedKey: best.k };
+    if (hit) return { ...hit, canonicalId: hit.canonicalId ?? best.k, matchedKey: best.k };
   }
   return undefined;
 }
