@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { ProviderApi } from "./types.ts";
 import { loadAuth, loadModels } from "./store.ts";
 
@@ -29,7 +29,7 @@ export function resolveRuntimeApiKey(
  */
 export async function publishManagedProvider(
   pi: ExtensionAPI,
-  modelRegistry: { refresh: () => Promise<void> },
+  modelRegistry: ModelRegistry,
   providerId: string,
 ): Promise<{ ok: boolean; message: string }> {
   const p = loadModels().providers?.[providerId];

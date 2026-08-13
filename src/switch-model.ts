@@ -1,12 +1,11 @@
+import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+
 export async function switchModel(opts: {
   providerId: string;
   modelId: string;
   setAsDefault: boolean;
   pi: { setModel: (m: unknown) => Promise<boolean> };
-  modelRegistry: {
-    refresh: () => Promise<void>;
-    find: (p: string, id: string) => unknown | undefined;
-  };
+  modelRegistry: Pick<ModelRegistry, "refresh" | "find">;
   setDefault: (provider: string, modelId: string) => void;
 }): Promise<{ ok: boolean; message: string }> {
   await opts.modelRegistry.refresh();
