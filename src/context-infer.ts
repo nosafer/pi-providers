@@ -11,9 +11,13 @@
  */
 import { getCatalogMeta, lookupPiAiCatalog } from "./catalog-lookup.ts";
 
-const cat = getCatalogMeta();
 export const CONTEXT_CATALOG_VERSION = 5;
-export const CONTEXT_CATALOG_LABEL = `v5 (pi-ai catalog ${cat.modelCount} models + API fields)`;
+
+/** Dynamic label: reads current catalog mtime each call, so updates apply without restart. */
+export function getCatalogLabel(): string {
+  const cat = getCatalogMeta();
+  return `v${CONTEXT_CATALOG_VERSION} (pi-ai catalog ${cat.modelCount} models + API fields)`;
+}
 
 /** More specific patterns first. */
 const KNOWN_CONTEXT: Array<{ pattern: RegExp; contextWindow: number; note?: string }> = [

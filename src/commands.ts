@@ -18,8 +18,8 @@ import {
   upsertManagedProvider,
 } from "./store.ts";
 import {
-  CONTEXT_CATALOG_LABEL,
   CONTEXT_CATALOG_VERSION,
+  getCatalogLabel,
   resolveContextWindow,
 } from "./context-infer.ts";
 import {
@@ -598,8 +598,8 @@ async function actionApplyLatestContextCatalog(
 
   const header =
     current === CONTEXT_CATALOG_VERSION
-      ? `当前已是 ${CONTEXT_CATALOG_LABEL}。仍可强制重算 context+思考能力。`
-      : `当前 catalog: v${current || "未记录"} → 将应用 ${CONTEXT_CATALOG_LABEL}（含思考能力启发式）`;
+      ? `当前已是 ${getCatalogLabel()}。仍可强制重算 context+思考能力。`
+      : `当前 catalog: v${current || "未记录"} → 将应用 ${getCatalogLabel()}（含思考能力启发式）`;
 
   if (totalChanged === 0) {
     const ok = await ctx.ui.confirm(
@@ -629,7 +629,7 @@ async function actionApplyLatestContextCatalog(
   saveSidecar(nextSide);
 
   ctx.ui.notify(
-    `已应用 ${CONTEXT_CATALOG_LABEL}，变更 ${totalChanged} 处`,
+    `已应用 ${getCatalogLabel()}，变更 ${totalChanged} 处`,
     "info",
   );
 }

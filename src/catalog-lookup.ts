@@ -6,7 +6,8 @@
  * Heuristics in context-infer / reasoning-infer remain as fallback for unknown ids.
  */
 
-import catalog from "./generated/pi-ai-catalog.json" with { type: "json" };
+import { readFileSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { ThinkingLevelMap } from "./types.ts";
 
 export interface CatalogHit {
@@ -37,9 +38,27 @@ type CatalogFile = {
   >;
 };
 
-const data = catalog as CatalogFile;
+const CATALOG_URL = new URL("./generated/pi-ai-catalog.json", import.meta.url);
+const CATALOG_PATH = fileURLToPath(CATALOG_URL);
+
+let cachedData: CatalogFile | undefined;
+let cachedMtimeMs = -1;
+
+/**
+ * Lazy-load the catalog from disk, re-reading when the file changes.
+ * Safe for concurrent calls (worst case: one extra parse after a write).
+ */
+function getData(): CatalogFile {
+  const mtimeMs = statSync(CATALOG_PATH).mtimeMs;
+  if (cachedData && mtimeMs === cachedMtimeMs) return cachedData;
+  const raw = readFileSync(CATALOG_PATH, "utf8");
+  cachedData = JSON.parse(raw) as CatalogFile;
+  cachedMtimeMs = mtimeMs;
+  return cachedData;
+}
 
 export function getCatalogMeta(): { version: number; modelCount: number } {
+  const data = getData();
   return { version: data.version, modelCount: data.modelCount };
 }
 
@@ -59,7 +78,7 @@ function bareId(id: string): string {
  * Tries: exact → bare → strip date/suffix variants → prefix/contains fuzzy.
  */
 export function lookupPiAiCatalog(modelId: string): CatalogHit | undefined {
-  const models = data.models;
+  const models = getData().models;
   const key = normalizeKey(modelId);
   const bare = bareId(modelId);
 
