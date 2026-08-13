@@ -7,6 +7,7 @@ import {
   isManaged,
   loadModels,
   loadSidecar,
+  saveSidecar,
   upsertManagedProvider,
 } from "../src/store.ts";
 import type { ModelEntry } from "../src/types.ts";
@@ -28,6 +29,18 @@ describe("store", () => {
 
   beforeEach(() => {
     agentDir = mkdtempSync(join(tmpdir(), "pi-providers-"));
+  });
+
+  it("auto-regen toggle defaults off and round-trips", () => {
+    expect(loadSidecar(agentDir).autoRegenOnStart).toBeUndefined();
+    const side = loadSidecar(agentDir);
+    side.autoRegenOnStart = true;
+    saveSidecar(side, agentDir);
+    expect(loadSidecar(agentDir).autoRegenOnStart).toBe(true);
+    const side2 = loadSidecar(agentDir);
+    side2.autoRegenOnStart = false;
+    saveSidecar(side2, agentDir);
+    expect(loadSidecar(agentDir).autoRegenOnStart).toBe(false);
   });
 
   it("upserts managed provider without clobbering foreign providers", () => {
@@ -101,8 +114,7 @@ describe("store", () => {
     expect(() => deleteManagedProvider("hand", agentDir)).toThrow(/not managed/i);
   });
 
-  it("deletes managed provider from models, auth, sidecar", () => {
-    upsertManagedProvider(
+  it("deletes managed provider from models, auth, sidecar", () => {    upsertManagedProvider(
       {
         id: "mkopen",
         displayName: "mkopen",

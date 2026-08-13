@@ -80,6 +80,8 @@ export interface SidecarFile {
   /** Last applied context-infer catalog version (from CONTEXT_CATALOG_VERSION). */
   contextCatalogVersion?: number;
   contextCatalogAppliedAt?: string;
+  /** When true, check installed pi-ai data on session start and regen automatically. Default false. */
+  autoRegenOnStart?: boolean;
 }
 
 export const DEFAULT_MODEL_META = {

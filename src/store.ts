@@ -65,6 +65,9 @@ export function loadSidecar(agentDir?: string): SidecarFile {
     version: 1,
     managedProviders: [...(data.managedProviders ?? [])],
     providers: { ...(data.providers ?? {}) },
+    contextCatalogVersion: data.contextCatalogVersion,
+    contextCatalogAppliedAt: data.contextCatalogAppliedAt,
+    autoRegenOnStart: data.autoRegenOnStart,
   };
 }
 

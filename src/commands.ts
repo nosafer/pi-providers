@@ -876,6 +876,7 @@ async function actionSwitch(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
 }
 
 async function actionTest(ctx: Ctx): Promise<void> {
+
   const id = await selectManaged(ctx, "测试哪个 provider？");
   if (!id) return;
   const p = loadModels().providers?.[id];
@@ -889,6 +890,19 @@ async function actionTest(ctx: Ctx): Promise<void> {
     modelId: p.models?.[0]?.id,
   });
   ctx.ui.notify(t.message, t.ok ? "info" : "error");
+}
+
+async function actionAutoRegen(ctx: Ctx): Promise<void> {
+  const side = loadSidecar();
+  const cur = Boolean(side.autoRegenOnStart);
+  const ok = await ctx.ui.confirm(
+    "启动时自动更新模型表",
+    `当前：${cur ? "开启" : "关闭（默认）"}\n开启后每次启动会检查 pi-ai 官方数据，有新模型表自动更新（无更新无感，不影响启动速度）。\n\n${cur ? "关闭？" : "开启？"}`,
+  );
+  if (!ok) return;
+  side.autoRegenOnStart = !cur;
+  saveSidecar(side);
+  ctx.ui.notify(`已${cur ? "关闭" : "开启"}启动时自动更新模型表`, "info");
 }
 
 export function registerProvidersCommand(pi: ExtensionAPI): void {
@@ -907,6 +921,7 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
         "thinking",
         "switch",
         "test",
+        "auto-regen",
       ];
       return subs
         .filter((s) => s.startsWith(prefix))
@@ -933,6 +948,7 @@ export function registerProvidersCommand(pi: ExtensionAPI): void {
               "thinking  查看/设置思考强度",
               "switch",
               "test",
+              "auto-regen  启动时自动更新模型表（默认关）",
             ]);
             if (!action) return;
             const route =
@@ -977,6 +993,8 @@ async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<vo
       return actionSwitch(ctx, pi);
     case "test":
       return actionTest(ctx);
+    case "auto-regen":
+      return actionAutoRegen(ctx);
     default:
       ctx.ui.notify(`未知子命令: ${sub}`, "error");
   }
