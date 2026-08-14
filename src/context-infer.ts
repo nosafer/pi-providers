@@ -11,7 +11,7 @@
  */
 import { getCatalogMeta, lookupPiAiCatalog } from "./catalog-lookup.ts";
 
-export const CONTEXT_CATALOG_VERSION = 5;
+export const CONTEXT_CATALOG_VERSION = 6;
 
 /** Dynamic label: reads current catalog mtime each call, so updates apply without restart. */
 export function getCatalogLabel(): string {

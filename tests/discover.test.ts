@@ -61,4 +61,12 @@ describe("toModelEntry", () => {
     expect(toModelEntry("gpt-5.5").contextWindow).toBe(272_000);
     expect(toModelEntry("gpt-5.5").reasoning).toBe(true);
   });
+
+  it("uses official catalog input: vision models get image, text-only do not", () => {
+    expect(toModelEntry("gpt-5.5").input).toEqual(["text", "image"]);
+    expect(toModelEntry("grok-4.5").input).toEqual(["text", "image"]);
+    expect(toModelEntry("gemini-3.6-flash-high").input).toEqual(["text", "image"]);
+    expect(toModelEntry("deepseek-v4-flash").input).toEqual(["text"]);
+    expect(toModelEntry("x-unknown-model").input).toEqual(["text"]);
+  });
 });

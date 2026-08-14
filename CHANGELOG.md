@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `/providers` 写模型时按 pi-ai 官方 catalog 同步 `input`（有图才带 `image`，DeepSeek 等纯文本不带）
+- `sync-catalog` 一并同步 `input`；catalog 版本升到 v6
+
 ## 0.1.0 — 2026-08-01
 
 ### Features

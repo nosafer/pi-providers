@@ -1,9 +1,17 @@
+import { lookupPiAiCatalog } from "./catalog-lookup.ts";
 import {
   extractContextFromRow,
   resolveContextWindow,
 } from "./context-infer.ts";
 import { inferReasoningProfile } from "./reasoning-infer.ts";
 import { DEFAULT_MODEL_META, type ModelEntry, type ProviderApi } from "./types.ts";
+
+/** Official catalog modalities; unknown / text-only models stay text-only. */
+export function resolveInputModalities(id: string): Array<"text" | "image"> {
+  const raw = lookupPiAiCatalog(id)?.input;
+  if (raw?.includes("image")) return ["text", "image"];
+  return ["text"];
+}
 
 export function toModelEntry(
   id: string,
@@ -21,7 +29,7 @@ export function toModelEntry(
     name: name ?? id,
     reasoning: reasoning.reasoning,
     thinkingLevelMap: reasoning.thinkingLevelMap,
-    input: [...DEFAULT_MODEL_META.input],
+    input: resolveInputModalities(id),
     contextWindow: cw,
     maxTokens: DEFAULT_MODEL_META.maxTokens,
     cost: { ...DEFAULT_MODEL_META.cost },

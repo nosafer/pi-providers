@@ -43,4 +43,9 @@ describe("pi-ai catalog lookup", () => {
     expect(hit?.canonicalId).toMatch(/gemini-3\.6-flash/);
     expect(hit?.contextWindow).toBeGreaterThan(500000);
   });
+
+  it("exposes official input modalities", () => {
+    expect(lookupPiAiCatalog("gpt-5.5")?.input).toEqual(["text", "image"]);
+    expect(lookupPiAiCatalog("deepseek-v4-flash")?.input).toEqual(["text"]);
+  });
 });

@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { discoverModels, toModelEntry } from "./discover.ts";
+import { discoverModels, resolveInputModalities, toModelEntry } from "./discover.ts";
 import {
   formatMultiSelectLabels,
   parseMultiSelectChoice,
@@ -492,11 +492,13 @@ function previewReinfer(providerId: string): {
   const updated = p.models.map((m) => {
     const nextCw = resolveContextWindow({ id: m.id });
     const reason = inferReasoningProfile(m.id);
+    const nextInput = resolveInputModalities(m.id);
     if (
       nextCw !== m.contextWindow ||
       reason.reasoning !== m.reasoning ||
       JSON.stringify(reason.thinkingLevelMap ?? null) !==
-        JSON.stringify(m.thinkingLevelMap ?? null)
+        JSON.stringify(m.thinkingLevelMap ?? null) ||
+      JSON.stringify(nextInput) !== JSON.stringify(m.input)
     ) {
       changed += 1;
     }
@@ -505,6 +507,7 @@ function previewReinfer(providerId: string): {
       contextWindow: nextCw,
       reasoning: reason.reasoning,
       thinkingLevelMap: reason.thinkingLevelMap,
+      input: nextInput,
     };
   });
   const summary = updated
