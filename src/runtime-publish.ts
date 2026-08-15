@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ProviderApi } from "./types.ts";
 import { loadAuth, loadModels } from "./store.ts";
 
@@ -29,7 +29,6 @@ export function resolveRuntimeApiKey(
  */
 export async function publishManagedProvider(
   pi: ExtensionAPI,
-  modelRegistry: ModelRegistry,
   providerId: string,
 ): Promise<{ ok: boolean; message: string }> {
   const p = loadModels().providers?.[providerId];
@@ -40,6 +39,10 @@ export async function publishManagedProvider(
   const apiKey = resolveRuntimeApiKey(providerId, p.apiKey);
   try {
     // Re-register replaces models for this provider in the live registry.
+    // registerProvider already updates the live snapshot and fires a
+    // background refresh({ allowNetwork: false }). Do not await refresh()
+    // here: the default is a full-network availability probe and it blocks
+    // session_start / commands when a gateway is slow or returns 401.
     pi.registerProvider(providerId, {
       baseUrl: p.baseUrl,
       api: p.api as ProviderApi,
@@ -55,7 +58,6 @@ export async function publishManagedProvider(
         cost: m.cost,
       })),
     });
-    await modelRegistry.refresh();
     return { ok: true, message: `已热加载 ${providerId}` };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

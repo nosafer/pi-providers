@@ -5,10 +5,11 @@ export async function switchModel(opts: {
   modelId: string;
   setAsDefault: boolean;
   pi: { setModel: (m: unknown) => Promise<boolean> };
-  modelRegistry: Pick<ModelRegistry, "refresh" | "find">;
+  modelRegistry: Pick<ModelRegistry, "find">;
   setDefault: (provider: string, modelId: string) => void;
 }): Promise<{ ok: boolean; message: string }> {
-  await opts.modelRegistry.refresh();
+  // find() reads the live snapshot. registerProvider already wrote it;
+  // a default refresh() would probe every provider on the network.
   const model = opts.modelRegistry.find(opts.providerId, opts.modelId);
   if (!model) {
     return {

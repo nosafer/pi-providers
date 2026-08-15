@@ -4,6 +4,7 @@
 
 - `/providers` 写模型时按 pi-ai 官方 catalog 同步 `input`（有图才带 `image`，DeepSeek 等纯文本不带）
 - `sync-catalog` 一并同步 `input`；catalog 版本升到 v6
+- 热加载 / 切模型 / 删除不再 `await refresh()`：避免启动时全 provider 探活卡在空输入框；`registerProvider` / `unregisterProvider` 已同步更新目录
 
 ## 0.1.0 — 2026-08-01
 

@@ -21,9 +21,11 @@ export default function (pi: ExtensionAPI) {
         // non-fatal — catalog check must never block session start
       }
     }
+    // registerProvider is sync + snapshot-safe. Do not await a network
+    // refresh here — that is what left the TUI on an empty input box.
     for (const id of listManaged()) {
       try {
-        await publishManagedProvider(pi, ctx.modelRegistry, id);
+        await publishManagedProvider(pi, id);
       } catch {
         // non-fatal
       }

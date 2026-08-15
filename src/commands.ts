@@ -262,7 +262,7 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     envVar,
     models: selectedModels,
   });
-  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  const published = await publishManagedProvider(pi, id);
   if (!published.ok) {
     ctx.ui.notify(published.message, "warning");
   }
@@ -281,7 +281,6 @@ async function actionAdd(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
         setAsDefault: scope === "设为默认",
         pi: { setModel: (m) => pi.setModel(m as never) },
         modelRegistry: {
-          refresh: () => ctx.modelRegistry.refresh(),
           find: (p, mid) => ctx.modelRegistry.find(p, mid),
         },
         setDefault: (p, m) => setDefaultModel(p, m),
@@ -405,7 +404,7 @@ async function actionEdit(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     envVar,
     models: modelList,
   });
-  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  const published = await publishManagedProvider(pi, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(`已更新 ${id}`, "info");
 }
@@ -452,7 +451,6 @@ async function actionRemoveModels(
       } catch {
         // registry may not have it registered yet
       }
-      await ctx.modelRegistry.refresh();
       ctx.ui.notify(`已删除 provider ${id}`, "info");
     }
     return;
@@ -476,7 +474,7 @@ async function actionRemoveModels(
     envVar: keyMode === "env" ? resolved.envVar : undefined,
     models: remaining,
   });
-  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  const published = await publishManagedProvider(pi, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(`已移除 ${picked.join(", ")}，剩余 ${remaining.length} 个`, "info");
 }
@@ -552,7 +550,7 @@ async function actionReinferContext(
   const ok = await ctx.ui.confirm("重算 context", `将应用：\n${preview.summary}`);
   if (!ok) return;
   writeReinfer(id, preview.updated);
-  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  const published = await publishManagedProvider(pi, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(`已更新（变更 ${preview.changed} 个模型）`, "info");
 }
@@ -630,7 +628,7 @@ async function actionApplyLatestContextCatalog(
   for (const id of ids) {
     const preview = previewReinfer(id);
     if (preview) writeReinfer(id, preview.updated);
-    await publishManagedProvider(pi, ctx.modelRegistry, id);
+    await publishManagedProvider(pi, id);
   }
 
   const nextSide = loadSidecar();
@@ -644,13 +642,17 @@ async function actionApplyLatestContextCatalog(
   );
 }
 
-async function actionDelete(ctx: Ctx): Promise<void> {
+async function actionDelete(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   const id = await selectManaged(ctx, "删除哪个 provider？");
   if (!id) return;
   const ok = await ctx.ui.confirm("确认删除", `删除 managed provider「${id}」？`);
   if (!ok) return;
   deleteManagedProvider(id);
-  await ctx.modelRegistry.refresh();
+  try {
+    pi.unregisterProvider(id);
+  } catch {
+    // registry may not have it registered yet
+  }
   ctx.ui.notify(`已删除 ${id}`, "info");
 }
 
@@ -687,14 +689,13 @@ async function actionThinking(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
     providerId = pid;
     modelId = mid;
     // switch session model first so setThinkingLevel applies to active model
-    await publishManagedProvider(pi, ctx.modelRegistry, pid);
+    await publishManagedProvider(pi, pid);
     const sw = await switchModel({
       providerId: pid,
       modelId: mid,
       setAsDefault: false,
       pi: { setModel: (m) => pi.setModel(m as never) },
       modelRegistry: {
-        refresh: () => ctx.modelRegistry.refresh(),
         find: (p, id) => ctx.modelRegistry.find(p, id),
       },
       setDefault: () => {},
@@ -838,7 +839,7 @@ async function actionRefresh(ctx: Ctx, pi: ExtensionAPI, presetId?: string): Pro
     envVar: keyMode === "env" ? resolved.envVar : undefined,
     models: finalModels,
   });
-  const published = await publishManagedProvider(pi, ctx.modelRegistry, id);
+  const published = await publishManagedProvider(pi, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(
     `刷新完成：保留 ${plan.keep.length}，新增 ${added.length}，stale ${plan.stale.length}`,
@@ -863,14 +864,13 @@ async function actionSwitch(ctx: Ctx, pi: ExtensionAPI): Promise<void> {
   const scope = await selectScrollable(ctx, "范围", ["仅本次", "设为默认"]);
   if (!scope) return;
   // Ensure live registry has this provider before setModel
-  await publishManagedProvider(pi, ctx.modelRegistry, id);
+  await publishManagedProvider(pi, id);
   const result = await switchModel({
     providerId: id,
     modelId,
     setAsDefault: scope === "设为默认",
     pi: { setModel: (m) => pi.setModel(m as never) },
     modelRegistry: {
-      refresh: () => ctx.modelRegistry.refresh(),
       find: (p, mid) => ctx.modelRegistry.find(p, mid),
     },
     setDefault: (p, m) => setDefaultModel(p, m),
@@ -986,7 +986,7 @@ async function handlerRoute(sub: string, ctx: Ctx, pi: ExtensionAPI): Promise<vo
     case "delete-models":
       return actionRemoveModels(ctx, pi);
     case "delete":
-      return actionDelete(ctx);
+      return actionDelete(ctx, pi);
     case "refresh":
       return actionRefresh(ctx, pi);
     case "sync-catalog":

@@ -38,7 +38,6 @@ describe("switchModel", () => {
       setAsDefault: true,
       pi: { setModel: async () => true },
       modelRegistry: {
-        refresh: async () => ({} as never),
         find: () => ({ id: "gpt-4o" } as never),
       },
       setDefault: (p, m) => defaults.push(`${p}/${m}`),
@@ -54,7 +53,6 @@ describe("switchModel", () => {
       setAsDefault: false,
       pi: { setModel: async () => true },
       modelRegistry: {
-        refresh: async () => ({} as never),
         find: () => undefined,
       },
       setDefault: () => {},
