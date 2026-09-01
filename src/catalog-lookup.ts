@@ -82,14 +82,20 @@ export function lookupPiAiCatalog(modelId: string): CatalogHit | undefined {
   const key = normalizeKey(modelId);
   const bare = bareId(modelId);
 
-  const tryKeys = [key, bare];
-  // strip trailing -preview, -batch, date stamps lightly
+  const tryKeys: string[] = [];
+  // Date-stamp stripping (4/8-digit MMDD or YYYYMMDD) goes BEFORE exact match:
+  // third-party gateways name snapshots deepseek-v4-flash-0731, and such catalog
+  // entries often carry an incomplete thinkingLevelMap (e.g. together's -0731
+  // only lists minimal/low/medium nulls). Stripping first lands on the official
+  // base entry (deepseek-v4-flash) with full high/max profile.
+  for (const id of [key, bare]) {
+    tryKeys.push(id.replace(/-\d{4,8}(-v\d+)?(:\d+)?$/i, ""));
+  }
+  tryKeys.push(key, bare);
+  // strip trailing -preview, semantic suffixes lightly
   tryKeys.push(bare.replace(/-preview$/, ""));
-  tryKeys.push(bare.replace(/-\d{8}$/, ""));
   // gemini-3.6-flash-high → gemini-3.6-flash
   tryKeys.push(bare.replace(/-(high|low|medium|thinking|fast|free|batch)$/i, ""));
-  // claude-sonnet-4-5-20250929 → claude-sonnet-4-5
-  tryKeys.push(bare.replace(/-\d{8}(-v\d+)?(:\d+)?$/i, ""));
 
   for (const k of tryKeys) {
     const hit = models[k];

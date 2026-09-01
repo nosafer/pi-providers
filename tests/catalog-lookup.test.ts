@@ -48,4 +48,26 @@ describe("pi-ai catalog lookup", () => {
     expect(lookupPiAiCatalog("gpt-5.5")?.input).toEqual(["text", "image"]);
     expect(lookupPiAiCatalog("deepseek-v4-flash")?.input).toEqual(["text"]);
   });
+
+  it("deepseek-v4-flash-0731 (4-digit date) resolves like the base id", () => {
+    const p = inferReasoningProfile("deepseek-v4-flash-0731");
+    expect(p.reasoning).toBe(true);
+    // must not hit the tlm-less together entry; strips -0731 → official deepseek-v4-flash
+    expect(listSupportedThinkingLevels(p).sort()).toEqual(
+      listSupportedThinkingLevels(inferReasoningProfile("deepseek-v4-flash")).sort()
+    );
+    expect(listSupportedThinkingLevels(p)).toContain("max");
+  });
+
+  it("deepseek-v4-pro-0813 (4-digit date) resolves to full high/max profile", () => {
+    const p = inferReasoningProfile("deepseek-v4-pro-0813");
+    expect(p.reasoning).toBe(true);
+    expect(listSupportedThinkingLevels(p)).toContain("max");
+  });
+
+  it("deepseek-v4-flash-vision (semantic suffix) still resolves via fuzzy fallback", () => {
+    const p = inferReasoningProfile("deepseek-v4-flash-vision");
+    expect(p.reasoning).toBe(true);
+    expect(listSupportedThinkingLevels(p)).toContain("max");
+  });
 });
