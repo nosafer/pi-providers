@@ -16,7 +16,7 @@
 - 可滚动 `SelectList`（长列表视口跟随光标）
 - **能力元数据以 pi-ai 官方 catalog 为主**（`src/generated/pi-ai-catalog.json`，约 1000+ 模型）
   - 字段：`contextWindow` / `reasoning` / `thinkingLevelMap`
-  - 再生：`npm run regen-catalog`（`scripts/regen-pi-ai-catalog.py`）
+  - 再生：`npm run regen-catalog`（`src/regen-catalog.ts`，与 `/providers sync-catalog` 自动再生同一实现）
 - `/providers sync-catalog` 一键同步能力表（旧名 `apply-context` 兼容）
 - `/providers thinking` 按模型列出官方思考档位并 `setThinkingLevel`
 - context 优先级：网关 API 字段 → pi-ai catalog → 启发式 → 128k

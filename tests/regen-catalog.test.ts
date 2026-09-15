@@ -4,7 +4,7 @@ import { lookupPiAiCatalog } from "../src/catalog-lookup.ts";
 import { resolveContextWindow } from "../src/context-infer.ts";
 import { inferReasoningProfile } from "../src/reasoning-infer.ts";
 
-describe("regen-catalog (TS port)", () => {
+describe("regen-catalog (single implementation)", () => {
   it("builds a large index with expected count", () => {
     const out = buildCatalogIndex();
     expect(out.modelCount).toBeGreaterThan(1000);

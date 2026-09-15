@@ -1,10 +1,11 @@
 /**
  * Regenerate src/generated/pi-ai-catalog.json from the installed pi-ai
- * provider data (TS port of scripts/regen-pi-ai-catalog.py).
+ * provider data. This is the single implementation of the regen: the plugin
+ * runs it automatically inside /providers sync-catalog, and
+ * `npm run regen-catalog` (scripts/regen-catalog.mts) just calls it.
  *
- * Runs automatically inside /providers sync-catalog when the installed
- * pi-ai data differs from the current catalog, so users never have to
- * regenerate by hand after a pi upgrade.
+ * Keeping one implementation is what stops the two entry points from emitting
+ * different key orders and overwriting each other's generated file.
  */
 
 import { mkdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
@@ -132,6 +133,8 @@ export function regenCatalogFromInstalledPiAi(): number | undefined {
   if (findPiAiDataFiles().length === 0) return undefined;
   const out = buildCatalogIndex();
   mkdirSync(dirname(OUT_PATH), { recursive: true });
+  // No trailing newline: keeps the generated file byte-identical across runs
+  // so a regen only shows up in git when the data actually changed.
   writeFileSync(OUT_PATH, JSON.stringify(out), "utf8");
   return out.modelCount;
 }
