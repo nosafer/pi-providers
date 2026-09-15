@@ -18,16 +18,15 @@ describe("planRefresh", () => {
 });
 
 describe("applyRefreshSelection", () => {
-  it("merges keep, added, and stale locals", () => {
+  it("drops stale locals that are no longer on the remote", () => {
     const remote = [toModelEntry("a"), toModelEntry("b"), toModelEntry("c")];
     const local = [toModelEntry("a"), toModelEntry("gone")];
     const models = applyRefreshSelection({
       keep: ["a"],
       added: ["c"],
-      stale: ["gone"],
       remoteModels: remote,
       localModels: local,
     });
-    expect(models.map((m) => m.id)).toEqual(["a", "c", "gone"]);
+    expect(models.map((m) => m.id)).toEqual(["a", "c"]);
   });
 });

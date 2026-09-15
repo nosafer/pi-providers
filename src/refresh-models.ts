@@ -16,7 +16,6 @@ export function planRefresh(
 export function applyRefreshSelection(opts: {
   keep: string[];
   added: string[];
-  stale: string[];
   remoteModels: ModelEntry[];
   localModels: ModelEntry[];
 }): ModelEntry[] {
@@ -25,16 +24,12 @@ export function applyRefreshSelection(opts: {
   const result: ModelEntry[] = [];
   const seen = new Set<string>();
 
+  // Selected ids that the remote no longer serves are intentionally absent:
+  // a refresh mirrors the remote, so stale entries are dropped (not kept).
   for (const id of [...opts.keep, ...opts.added]) {
     if (seen.has(id)) continue;
     seen.add(id);
     result.push(remoteMap.get(id) ?? localMap.get(id) ?? toModelEntry(id));
-  }
-  // keep stale local entries so user does not silently lose them
-  for (const id of opts.stale) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    result.push(localMap.get(id) ?? toModelEntry(id));
   }
   return result;
 }

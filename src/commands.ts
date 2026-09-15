@@ -804,7 +804,10 @@ async function actionRefresh(ctx: Ctx, pi: ExtensionAPI, presetId?: string): Pro
     discovered.models.map((m) => m.id),
   );
   if (plan.stale.length) {
-    ctx.ui.notify(`远端已无: ${plan.stale.join(", ")}（本地仍保留）`, "warning");
+    ctx.ui.notify(
+      `远端已无: ${plan.stale.join(", ")}（已从本地移除）`,
+      "warning",
+    );
   }
   let added: string[] = [];
   if (plan.newCandidates.length) {
@@ -823,7 +826,6 @@ async function actionRefresh(ctx: Ctx, pi: ExtensionAPI, presetId?: string): Pro
   const finalModels = applyRefreshSelection({
     keep: plan.keep,
     added,
-    stale: plan.stale,
     remoteModels: discovered.models,
     localModels: p.models ?? [],
   });
@@ -842,7 +844,7 @@ async function actionRefresh(ctx: Ctx, pi: ExtensionAPI, presetId?: string): Pro
   const published = await publishManagedProvider(pi, id);
   if (!published.ok) ctx.ui.notify(published.message, "warning");
   ctx.ui.notify(
-    `刷新完成：保留 ${plan.keep.length}，新增 ${added.length}，stale ${plan.stale.length}`,
+    `刷新完成：保留 ${plan.keep.length}，新增 ${added.length}，移除 ${plan.stale.length}`,
     "info",
   );
 }
