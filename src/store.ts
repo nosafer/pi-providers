@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { asCompat, resolveProviderCompat } from "./compat.ts";
 import { authPath, modelsPath, settingsPath, sidecarPath } from "./paths.ts";
 import type {
   AuthFile,
@@ -16,6 +17,7 @@ import type {
   ModelsFile,
   ModelsProviderConfig,
   ProviderApi,
+  ProviderCompat,
   SettingsFile,
   SidecarFile,
 } from "./types.ts";
@@ -116,6 +118,7 @@ export interface UpsertManagedInput {
   apiKey?: string;
   envVar?: string;
   models: ModelEntry[];
+  compat?: ProviderCompat;
 }
 
 export function upsertManagedProvider(input: UpsertManagedInput, agentDir?: string): void {
@@ -141,6 +144,13 @@ export function upsertManagedProvider(input: UpsertManagedInput, agentDir?: stri
     api: input.api,
     models: input.models,
   };
+
+  const compat = resolveProviderCompat(
+    input.baseUrl,
+    asCompat(existing?.compat),
+    input.compat,
+  );
+  if (compat) providerConfig.compat = compat;
 
   if (input.keyMode === "env") {
     const envName = input.envVar!.replace(/^\$/, "");

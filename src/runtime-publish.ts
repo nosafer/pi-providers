@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { ProviderApi } from "./types.ts";
+import { buildManagedProviderRegistration } from "./compat.ts";
 import { loadAuth, loadModels } from "./store.ts";
 
 /** Resolve key the same way commands do (auth.json or $ENV in models). */
@@ -43,20 +43,12 @@ export async function publishManagedProvider(
     // background refresh({ allowNetwork: false }). Do not await refresh()
     // here: the default is a full-network availability probe and it blocks
     // session_start / commands when a gateway is slow or returns 401.
+    const registration = buildManagedProviderRegistration(p);
     pi.registerProvider(providerId, {
-      baseUrl: p.baseUrl,
-      api: p.api as ProviderApi,
+      baseUrl: registration.baseUrl,
+      api: registration.api,
       apiKey,
-      models: p.models.map((m) => ({
-        id: m.id,
-        name: m.name,
-        reasoning: m.reasoning,
-        thinkingLevelMap: m.thinkingLevelMap,
-        input: m.input,
-        contextWindow: m.contextWindow,
-        maxTokens: m.maxTokens,
-        cost: m.cost,
-      })),
+      models: registration.models,
     });
     return { ok: true, message: `已热加载 ${providerId}` };
   } catch (err) {

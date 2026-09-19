@@ -21,6 +21,13 @@ export type ThinkingLevel =
 
 export type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
 
+/** Subset of pi openai-completions compat that this plugin must preserve. */
+export interface ProviderCompat {
+  supportsDeveloperRole?: boolean;
+  supportsReasoningEffort?: boolean;
+  [key: string]: unknown;
+}
+
 export interface ModelEntry {
   id: string;
   name: string;
@@ -32,6 +39,7 @@ export interface ModelEntry {
   maxTokens: number;
   cost: CostConfig;
   api?: ProviderApi;
+  compat?: ProviderCompat;
 }
 
 export interface ModelsProviderConfig {
@@ -41,6 +49,7 @@ export interface ModelsProviderConfig {
   authHeader?: boolean;
   headers?: Record<string, string>;
   models?: ModelEntry[];
+  compat?: ProviderCompat;
   [key: string]: unknown;
 }
 

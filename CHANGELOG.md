@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **热加载不再丢 `compat`**：`registerProvider` 改走 `buildManagedProviderRegistration()`，把 provider/model 级 `compat` 摊到每个模型上（扩展层模型会整表替换 `models.json`，否则 Pi 会发 `role=developer`）
+- 新增 `src/compat.ts`：sharellm 主机自动推断 `supportsDeveloperRole: false`；合并顺序为「推断 → 已有配置 → 显式覆盖」
+- `/providers` 编辑 provider 不再冲掉已有 `compat`，sharellm 漏写也会自动补
 - `/providers` 写模型时按 pi-ai 官方 catalog 同步 `input`（有图才带 `image`，DeepSeek 等纯文本不带）
 - `sync-catalog` 一并同步 `input`；catalog 版本升到 v6
 - 热加载 / 切模型 / 删除不再 `await refresh()`：避免启动时全 provider 探活卡在空输入框；`registerProvider` / `unregisterProvider` 已同步更新目录
